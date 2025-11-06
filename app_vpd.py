@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 import os
+from datetime import datetime
 
 # � Configuración específica para móviles (especialmente iOS)
 st.set_page_config(
@@ -805,8 +806,7 @@ y calcula el VPD, un parámetro crucial para optimizar el crecimiento de las pla
 
 # Botón para obtener datos
 if st.button("🔍 Generar VPD", type="primary"):
-    # Obtener hora actual
-    from datetime import datetime
+    # Obtener hora actual con zona horaria local
     hora_actual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     
     with st.spinner("🔄 Obteniendo datos de la estación..."):
@@ -817,7 +817,14 @@ if st.button("🔍 Generar VPD", type="primary"):
         rango = clasificar_vpd(vpd)
 
         st.success("✅ Datos obtenidos correctamente")
-        st.info(f"🕐 **Generado el**: {hora_actual}")
+        
+        # 🕐 Mostrar hora de forma más clara
+        st.markdown(f"""
+        <div style="background-color: #E3F2FD; border: 2px solid #2196F3; border-radius: 10px; padding: 15px; text-align: center; margin: 15px 0;">
+            <h4 style="color: #000000; margin: 0;">🕐 Última actualización</h4>
+            <h3 style="color: #000000; margin: 10px 0;">{hora_actual}</h3>
+        </div>
+        """, unsafe_allow_html=True)
         
         # 📱 MOSTRAR DATOS BÁSICOS PRIMERO (SIEMPRE VISIBLE EN MÓVIL)
         st.markdown("""
