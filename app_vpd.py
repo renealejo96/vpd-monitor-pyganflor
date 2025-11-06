@@ -25,35 +25,110 @@ st.set_page_config(
 # 🎨 CSS personalizado para mejor compatibilidad móvil
 st.markdown("""
 <style>
-    /* Forzar tema claro para iOS */
+    /* FORZAR TEMA CLARO COMPLETO */
     .stApp {
-        background-color: white !important;
-        color: black !important;
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
     }
     
-    /* Optimización para iPhone */
+    .main {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    .block-container {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+        padding-top: 1rem !important;
+    }
+    
+    /* FORZAR VISIBILIDAD EN MÓVILES */
+    .element-container {
+        background-color: #FFFFFF !important;
+        color: #000000 !important;
+    }
+    
+    .stMarkdown {
+        background-color: transparent !important;
+        color: #000000 !important;
+    }
+    
+    .stTitle {
+        color: #000000 !important;
+        background-color: #FFFFFF !important;
+    }
+    
+    /* MÉTRICAS VISIBLES */
+    .metric-container {
+        background-color: #F8F9FA !important;
+        border: 2px solid #28A745 !important;
+        border-radius: 10px !important;
+        padding: 15px !important;
+        margin: 10px 0 !important;
+    }
+    
+    .stMetric {
+        background-color: #F8F9FA !important;
+        border: 2px solid #DEE2E6 !important;
+        border-radius: 8px !important;
+        padding: 10px !important;
+        color: #000000 !important;
+    }
+    
+    .stMetric label {
+        color: #000000 !important;
+        font-weight: bold !important;
+    }
+    
+    .stMetric [data-testid="metric-value"] {
+        color: #000000 !important;
+        font-size: 24px !important;
+        font-weight: bold !important;
+    }
+    
+    /* SIDEBAR VISIBLE */
+    .css-1d391kg {
+        background-color: #F8F9FA !important;
+    }
+    
+    /* PLOTLY CHART FONDO BLANCO */
+    .stPlotlyChart {
+        background-color: #FFFFFF !important;
+    }
+    
+    /* OPTIMIZACIÓN ESPECÍFICA PARA MÓVILES */
     @media screen and (max-width: 768px) {
         .main .block-container {
-            padding-top: 2rem;
-            padding-left: 1rem;
-            padding-right: 1rem;
+            padding: 1rem !important;
+            max-width: 100% !important;
         }
         
-        .stMetric {
-            background-color: #f8f9fa;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            border: 1px solid #dee2e6;
+        .stTitle h1 {
+            font-size: 1.5rem !important;
+            color: #000000 !important;
+            text-align: center !important;
+            background-color: #FFFFFF !important;
+            padding: 10px !important;
+            border: 2px solid #28A745 !important;
+            border-radius: 10px !important;
+        }
+        
+        /* FORZAR VISIBILIDAD TOTAL EN MÓVIL */
+        * {
+            color: #000000 !important;
+        }
+        
+        .stApp > div {
+            background-color: #FFFFFF !important;
         }
     }
     
-    /* Asegurar visibilidad en Safari iOS */
-    .element-container {
-        background-color: transparent !important;
-    }
-    
-    .stPlotlyChart {
-        background-color: white !important;
+    /* WEBKIT ESPECÍFICO (SAFARI/CHROME MÓVIL) */
+    @supports (-webkit-appearance: none) {
+        .stApp {
+            -webkit-appearance: none !important;
+            background-color: #FFFFFF !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -688,12 +763,24 @@ st.set_page_config(page_title="Consulta VPD", page_icon="🌿")
 # 🌿 APLICACIÓN PRINCIPAL
 st.title("🌿 Consulta de VPD PYGANFLOR")
 
+# 📱 DETECCIÓN Y MENSAJE PARA MÓVILES
+st.markdown("""
+<div style="background-color: #28A745; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
+    <h3>📱 VPD Monitor PYGANFLOR</h3>
+    <p>Monitoreo en tiempo real para agricultura</p>
+</div>
+""", unsafe_allow_html=True)
+
+# 🔧 PRUEBA DE VISIBILIDAD PARA MÓVILES
+st.success("✅ Si ves este mensaje, la app está cargando correctamente")
+st.info("📱 Optimizado para dispositivos móviles")
+
 # 📱 Debug para iPhone - mostrar información del navegador
-if st.sidebar.checkbox("🔧 Debug iPhone", help="Activar si tienes problemas en iPhone"):
-    st.sidebar.write("**User Agent Info:**")
-    st.sidebar.code(f"Platform: {st.get_option('client.toolbarMode')}")
+if st.sidebar.checkbox("🔧 Debug Móvil", help="Activar si tienes problemas en móvil"):
+    st.sidebar.write("**Info del navegador:**")
     st.sidebar.success("✅ App cargada correctamente")
-    st.sidebar.info("💡 Si ves esto, la app funciona en tu iPhone")
+    st.sidebar.info("💡 Si ves esto, la conexión funciona")
+    st.sidebar.write("🔄 Actualizando datos...")
 
 st.title("🌿 Consulta de VPD PYGANFLOR")
 
@@ -732,19 +819,84 @@ if st.button("🔍 Generar VPD", type="primary"):
         st.success("✅ Datos obtenidos correctamente")
         st.info(f"🕐 **Generado el**: {hora_actual}")
         
-        # Mostrar métricas
+        # 📱 MOSTRAR DATOS BÁSICOS PRIMERO (SIEMPRE VISIBLE EN MÓVIL)
+        st.markdown("""
+        <div style="background-color: #F8F9FA; border: 3px solid #28A745; border-radius: 15px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #000000; text-align: center;">📊 DATOS ACTUALES PYGANFLOR</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Mostrar métricas con estilo forzado para móvil
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("🌡️ Temperatura", f"{temp:.1f}°C")
+            st.markdown(f"""
+            <div style="background-color: #E3F2FD; border: 2px solid #2196F3; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
+                <h4 style="color: #000000; margin: 0;">🌡️ Temperatura</h4>
+                <h2 style="color: #000000; margin: 10px 0;">{temp:.1f}°C</h2>
+            </div>
+            """, unsafe_allow_html=True)
         with col2:
-            st.metric("💧 Humedad Relativa", f"{hr}%")
+            st.markdown(f"""
+            <div style="background-color: #E8F5E8; border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
+                <h4 style="color: #000000; margin: 0;">💧 Humedad</h4>
+                <h2 style="color: #000000; margin: 10px 0;">{hr}%</h2>
+            </div>
+            """, unsafe_allow_html=True)
         with col3:
+            # Color según VPD
+            if "IDEAL" in rango:
+                color_bg = "#E8F5E8"
+                color_border = "#4CAF50"
+                icon = "✅"
+            elif "BAJO" in rango:
+                color_bg = "#FFF3E0"
+                color_border = "#FF9800"
+                icon = "⚠️"
+            else:
+                color_bg = "#FFEBEE"
+                color_border = "#F44336"
+                icon = "❌"
+                
+            st.markdown(f"""
+            <div style="background-color: {color_bg}; border: 2px solid {color_border}; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
+                <h4 style="color: #000000; margin: 0;">{icon} VPD</h4>
+                <h2 style="color: #000000; margin: 10px 0;">{vpd} kPa</h2>
+                <p style="color: #000000; margin: 0; font-weight: bold;">{rango}</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Mostrar métricas también con el sistema normal (fallback)
+        st.write("---")
+        col1b, col2b, col3b = st.columns(3)
+        with col1b:
+            st.metric("🌡️ Temperatura", f"{temp:.1f}°C")
+        with col2b:
+            st.metric("💧 Humedad Relativa", f"{hr}%")
+        with col3b:
             st.metric("📈 VPD", f"{vpd} kPa")
         
         st.info(f"📋 **Estado**: {rango}")
 
-        # Mostrar gráfico psicrométrico
-        graficar_psicrometrico(temp, hr, vpd)
+        # 📱 OPCIÓN PARA MÓVIL: Solo datos o incluir gráfico
+        mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
+        
+        if not mostrar_grafico:
+            st.success("📱 **Modo móvil activado** - Solo datos básicos")
+            st.markdown(f"""
+            <div style="background-color: #E8F5E8; border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 20px 0;">
+                <h3 style="color: #000000; text-align: center;">🌱 RESUMEN VPD PYGANFLOR</h3>
+                <ul style="color: #000000; font-size: 16px;">
+                    <li><strong>Zona Ideal VPD:</strong> 0.4 - 1.2 kPa</li>
+                    <li><strong>VPD Actual:</strong> {vpd} kPa</li>
+                    <li><strong>Estado:</strong> {rango}</li>
+                    <li><strong>Recomendación:</strong> {"✅ Condiciones óptimas" if "IDEAL" in rango else "⚠️ Ajustar riego/ventilación"}</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            # Mostrar gráfico psicrométrico solo si está activado
+            st.write("📊 **Diagrama Psicrométrico de Mollier**")
+            graficar_psicrometrico(temp, hr, vpd)
         
         # Tabla con datos históricos (simulada)
         st.subheader("📈 Resumen de la lectura")
