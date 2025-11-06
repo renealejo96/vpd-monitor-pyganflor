@@ -9,7 +9,56 @@ import plotly.graph_objects as go
 import numpy as np
 import os
 
-# 🔐 Credenciales de WeatherLink (Producción)
+# � Configuración específica para móviles (especialmente iOS)
+st.set_page_config(
+    page_title="VPD Monitor PYGANFLOR", 
+    page_icon="🌱",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "Monitor VPD para agricultura - PYGANFLOR"
+    }
+)
+
+# 🎨 CSS personalizado para mejor compatibilidad móvil
+st.markdown("""
+<style>
+    /* Forzar tema claro para iOS */
+    .stApp {
+        background-color: white !important;
+        color: black !important;
+    }
+    
+    /* Optimización para iPhone */
+    @media screen and (max-width: 768px) {
+        .main .block-container {
+            padding-top: 2rem;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+        
+        .stMetric {
+            background-color: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #dee2e6;
+        }
+    }
+    
+    /* Asegurar visibilidad en Safari iOS */
+    .element-container {
+        background-color: transparent !important;
+    }
+    
+    .stPlotlyChart {
+        background-color: white !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# �🔐 Credenciales de WeatherLink (Producción)
 # En producción, usar st.secrets o variables de entorno
 try:
     # Intentar obtener de Streamlit secrets (producción)
@@ -514,7 +563,7 @@ def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
         showlegend=False  # Quitar etiquetas de la derecha
     ))
     
-    # Configuración del gráfico
+    # Configuración del gráfico con optimización para iPhone
     fig.update_layout(
         title='DIAGRAMA MOLLIER VPD PYGANFLOR',
         xaxis_title='Humedad Absoluta (g/kg aire seco)',
@@ -525,7 +574,11 @@ def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
         showlegend=False,  # Ocultar completamente la leyenda
         template='plotly_white',
         title_font_size=16,
-        title_x=0.5
+        title_x=0.5,
+        # Optimizaciones específicas para móvil
+        margin=dict(l=50, r=50, t=80, b=50),
+        plot_bgcolor='white',
+        paper_bgcolor='white'
     )
     
     # Eje X principal (inferior) - Humedad Absoluta
@@ -560,7 +613,49 @@ def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
         font=dict(size=12)
     )
     
-    st.plotly_chart(fig, use_container_width=True)
+    # Configuración específica para dispositivos móviles
+    config = {
+        'displayModeBar': True,
+        'displaylogo': False,
+        'modeBarButtonsToRemove': ['pan2d', 'lasso2d', 'select2d'],
+        'toImageButtonOptions': {
+            'format': 'png',
+            'filename': 'VPD_PYGANFLOR',
+            'height': 500,
+            'width': 700,
+            'scale': 1
+        },
+        'responsive': True
+    }
+    
+    # Renderizar gráfico
+    try:
+        st.plotly_chart(fig, use_container_width=True, config=config)
+    except Exception as e:
+        # Fallback para iPhone si hay problemas con Plotly
+        st.error("⚠️ Problema al cargar gráfico en iPhone")
+        st.info("📊 Mostrando datos en formato simple:")
+        
+        # Mostrar datos en tabla como fallback
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("🌡️ Temperatura", f"{temp_actual:.1f}°C")
+        with col2:
+            st.metric("💧 Humedad", f"{hr_actual}%")
+        with col3:
+            ha_actual = calcular_humedad_absoluta(temp_actual, hr_actual)
+            st.metric("💨 Humedad Abs.", f"{ha_actual:.1f} g/kg")
+        
+        # Estado VPD
+        estado = clasificar_vpd(vpd_actual)
+        if "IDEAL" in estado:
+            st.success(f"✅ VPD: {vpd_actual} kPa - {estado}")
+        elif "BAJO" in estado:
+            st.warning(f"⚠️ VPD: {vpd_actual} kPa - {estado}")
+        else:
+            st.error(f"❌ VPD: {vpd_actual} kPa - {estado}")
+        
+        st.write("🔧 **Solución:** Actualiza Safari o usa Chrome en iPhone")
     
     # Interpretación del resultado
     st.markdown("### 📋 Interpretación del Diagrama Mollier:")
@@ -590,6 +685,16 @@ def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
 
 # 🖥️ Interfaz Streamlit
 st.set_page_config(page_title="Consulta VPD", page_icon="🌿")
+# 🌿 APLICACIÓN PRINCIPAL
+st.title("🌿 Consulta de VPD PYGANFLOR")
+
+# 📱 Debug para iPhone - mostrar información del navegador
+if st.sidebar.checkbox("🔧 Debug iPhone", help="Activar si tienes problemas en iPhone"):
+    st.sidebar.write("**User Agent Info:**")
+    st.sidebar.code(f"Platform: {st.get_option('client.toolbarMode')}")
+    st.sidebar.success("✅ App cargada correctamente")
+    st.sidebar.info("💡 Si ves esto, la app funciona en tu iPhone")
+
 st.title("🌿 Consulta de VPD PYGANFLOR")
 
 # Validar credenciales en el sidebar
