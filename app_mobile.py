@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import math
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # 📱 VERSIÓN MÓVIL ULTRA-SIMPLE - VPD PYGANFLOR
 st.set_page_config(
@@ -109,7 +109,9 @@ st.info("📱 Versión optimizada para móviles")
 
 # Botón principal
 if st.button("🔍 OBTENER DATOS VPD", type="primary", use_container_width=True):
-    hora_actual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    # Hora de Colombia (UTC-5)
+    colombia_tz = timezone(timedelta(hours=-5))
+    hora_actual = datetime.now(colombia_tz).strftime("%d/%m/%Y %H:%M:%S")
     
     with st.spinner("🔄 Conectando con estación..."):
         temp, hr = obtener_datos_estacion()

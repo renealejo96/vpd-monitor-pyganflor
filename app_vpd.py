@@ -8,7 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 import os
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 # � Configuración específica para móviles (especialmente iOS)
 st.set_page_config(
@@ -806,8 +806,9 @@ y calcula el VPD, un parámetro crucial para optimizar el crecimiento de las pla
 
 # Botón para obtener datos
 if st.button("🔍 Generar VPD", type="primary"):
-    # Obtener hora actual con zona horaria local
-    hora_actual = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    # Obtener hora actual de Colombia (UTC-5)
+    colombia_tz = timezone(timedelta(hours=-5))
+    hora_actual = datetime.now(colombia_tz).strftime("%d/%m/%Y %H:%M:%S")
     
     with st.spinner("🔄 Obteniendo datos de la estación..."):
         temp, hr = obtener_datos_estacion()
