@@ -18,6 +18,12 @@ try:
 except:
     GSHEETS_AVAILABLE = False
 
+try:
+    from supabase import create_client, Client
+    SUPABASE_AVAILABLE = True
+except:
+    SUPABASE_AVAILABLE = False
+
 # � Configuración específica para móviles (especialmente iOS)
 st.set_page_config(
     page_title="VPD Monitor PYGANFLOR", 
@@ -163,9 +169,57 @@ GSHEET_NAME = "VPD_PYGANFLOR_HISTORICO"
 def esta_en_produccion():
     """Detecta si la app está corriendo en Streamlit Cloud"""
     try:
-        # En Streamlit Cloud, st.secrets estará disponible y configurado
-        return "gcp_service_account" in st.secrets
+        # Priorizar Supabase sobre Google Sheets
+        if "supabase_url" in st.secrets and "supabase_key" in st.secrets:
+            return "supabase"
+        elif "gcp_service_account" in st.secrets:
+            return "gsheets"
+        return False
     except:
+        return False
+
+# 📊 Funciones para Supabase (Producción - Recomendado)
+def obtener_cliente_supabase():
+    """Obtiene cliente de Supabase"""
+    try:
+        if not SUPABASE_AVAILABLE:
+            return None
+        
+        url = st.secrets["supabase_url"]
+        key = st.secrets["supabase_key"]
+        return create_client(url, key)
+    except:
+        return None
+
+def cargar_historico_supabase():
+    """Carga histórico desde Supabase"""
+    try:
+        client = obtener_cliente_supabase()
+        if not client:
+            return []
+        
+        # Obtener últimos 7 días de registros
+        response = client.table('vpd_historico').select('*').order('timestamp', desc=True).limit(672).execute()
+        return response.data if response.data else []
+    except Exception as e:
+        st.error(f"Error al cargar desde Supabase: {e}")
+        return []
+
+def guardar_registro_supabase(registro):
+    """Guarda un nuevo registro en Supabase"""
+    try:
+        client = obtener_cliente_supabase()
+        if not client:
+            return False
+        
+        # Insertar registro
+        client.table('vpd_historico').insert(registro).execute()
+        
+        # Limpiar registros viejos (mantener últimos 672)
+        # Supabase lo puede manejar con políticas de retención o manualmente
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar en Supabase: {e}")
         return False
 
 # 📊 Funciones para Google Sheets (Producción)
@@ -271,8 +325,11 @@ def guardar_historico_json(datos):
 
 # 🔄 Funciones híbridas (Auto-detectan producción/desarrollo)
 def cargar_historico():
-    """Carga histórico desde Google Sheets (producción) o JSON (local)"""
-    if esta_en_produccion():
+    """Carga histórico desde Supabase/Google Sheets (producción) o JSON (local)"""
+    env = esta_en_produccion()
+    if env == "supabase":
+        return cargar_historico_supabase()
+    elif env == "gsheets":
         return cargar_historico_gsheets()
     else:
         return cargar_historico_json()
@@ -300,11 +357,15 @@ def agregar_lectura_historico(temp, hr, vpd):
     }
     
     # Guardar según el entorno
-    if esta_en_produccion():
-        # En producción: guardar directamente en Google Sheets
+    env = esta_en_produccion()
+    if env == "supabase":
+        # Producción: Supabase (recomendado)
+        return guardar_registro_supabase(nuevo_registro)
+    elif env == "gsheets":
+        # Producción: Google Sheets (alternativa)
         return guardar_registro_gsheets(nuevo_registro)
     else:
-        # En desarrollo: usar JSON local
+        # Desarrollo: JSON local
         historico = cargar_historico()
         historico.append(nuevo_registro)
         
