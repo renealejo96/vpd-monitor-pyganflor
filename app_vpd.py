@@ -215,16 +215,22 @@ def guardar_registro_supabase(registro):
     try:
         client = obtener_cliente_supabase()
         if not client:
+            st.error("❌ No se pudo conectar a Supabase. Verifica las credenciales.")
             return False
         
         # Insertar registro
-        client.table('vpd_historico').insert(registro).execute()
+        response = client.table('vpd_historico').insert(registro).execute()
         
-        # Limpiar registros viejos (mantener últimos 672)
-        # Supabase lo puede manejar con políticas de retención o manualmente
-        return True
+        # Verificar que se insertó correctamente
+        if response.data:
+            st.success(f"✅ Datos guardados en Supabase: {registro['hora']}")
+            return True
+        else:
+            st.warning("⚠️ Supabase no confirmó el guardado")
+            return False
     except Exception as e:
-        st.error(f"Error al guardar en Supabase: {e}")
+        st.error(f"❌ Error al guardar en Supabase: {str(e)}")
+        st.info("💡 Verifica que la tabla 'vpd_historico' exista y tenga las columnas correctas")
         return False
 
 # 📊 Funciones para Google Sheets (Producción)
@@ -1230,8 +1236,10 @@ if st.button("🔍 Generar VPD", type="primary"):
         
         # 💾 Guardar en histórico si han pasado 15 minutos
         if debe_guardar_lectura():
-            if agregar_lectura_historico(temp, hr, vpd):
-                st.success("💾 Lectura guardada en histórico automáticamente")
+            st.info("💾 Guardando lectura automática...")
+            resultado = agregar_lectura_historico(temp, hr, vpd)
+            if not resultado:
+                st.error("❌ No se pudo guardar la lectura. Revisa los mensajes de error arriba.")
         else:
             ultimo = obtener_ultimo_registro_tiempo()
             if ultimo:
