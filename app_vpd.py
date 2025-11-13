@@ -171,11 +171,15 @@ def esta_en_produccion():
     try:
         # Priorizar Supabase sobre Google Sheets
         if "supabase_url" in st.secrets and "supabase_key" in st.secrets:
+            st.sidebar.success("🟢 Supabase detectado")
             return "supabase"
         elif "gcp_service_account" in st.secrets:
+            st.sidebar.info("🔵 Google Sheets detectado")
             return "gsheets"
+        st.sidebar.warning("🟡 Modo desarrollo (local JSON)")
         return False
-    except:
+    except Exception as e:
+        st.sidebar.error(f"🔴 Error detectando entorno: {str(e)}")
         return False
 
 # 📊 Funciones para Supabase (Producción - Recomendado)
@@ -183,12 +187,26 @@ def obtener_cliente_supabase():
     """Obtiene cliente de Supabase"""
     try:
         if not SUPABASE_AVAILABLE:
+            st.error("❌ Librería Supabase no disponible. Instala: pip install supabase")
+            return None
+        
+        if "supabase_url" not in st.secrets:
+            st.error("❌ SUPABASE_URL no está en secrets")
+            return None
+            
+        if "supabase_key" not in st.secrets:
+            st.error("❌ SUPABASE_KEY no está en secrets")
             return None
         
         url = st.secrets["supabase_url"]
         key = st.secrets["supabase_key"]
-        return create_client(url, key)
-    except:
+        
+        st.info(f"🔗 Conectando a: {url}")
+        client = create_client(url, key)
+        st.success("✅ Cliente Supabase creado exitosamente")
+        return client
+    except Exception as e:
+        st.error(f"❌ Error al crear cliente Supabase: {str(e)}")
         return None
 
 def cargar_historico_supabase():
