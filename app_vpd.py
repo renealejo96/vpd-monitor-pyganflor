@@ -787,10 +787,15 @@ def graficar_evolucion_vpd():
             st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
             return
         
+        st.info(f"📊 Cargados {len(historico)} registros desde Supabase")
+        
         # Convertir a DataFrame
         df = pd.DataFrame(historico)
+        
+        # Verificar columnas
         if 'timestamp' not in df.columns:
-            st.error("❌ Error: Los datos históricos no tienen el formato correcto.")
+            st.error(f"❌ Error: Columnas encontradas: {list(df.columns)}")
+            st.error(f"Primer registro: {historico[0]}")
             return
             
         df['datetime'] = pd.to_datetime(df['timestamp'])
@@ -1293,6 +1298,8 @@ if st.button("🔍 Generar VPD", type="primary"):
                 if not historico or len(historico) == 0:
                     st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
                 else:
+                    st.info(f"📊 Cargados {len(historico)} registros desde Supabase")
+                    
                     # Convertir a DataFrame
                     df_historico = pd.DataFrame(historico)
                     
