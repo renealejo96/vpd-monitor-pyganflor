@@ -1157,22 +1157,27 @@ if st.sidebar.checkbox("🔧 Debug Móvil", help="Activar si tienes problemas en
     st.sidebar.info("💡 Si ves esto, la conexión funciona")
     st.sidebar.write("🔄 Actualizando datos...")
 
-st.title("🌿 Consulta de VPD PYGANFLOR")
+st.title("🌿 Monitor VPD PYGANFLOR")
 
-# Validar credenciales en el sidebar
-validar_credenciales()
+# 🔄 CREAR TABS PARA SEPARAR CONTENIDO
+tab1, tab2, tab3 = st.tabs(["📊 Datos Actuales", "📈 Gráfica Histórica", "📋 Tabla de Datos"])
 
-# Información inicial
-st.markdown("""
-## 📊 Calculadora de Déficit de Presión de Vapor (VPD)
+# ===== TAB 1: DATOS ACTUALES =====
+with tab1:
+    # Validar credenciales en el sidebar
+    validar_credenciales()
 
-Esta aplicación obtiene datos en tiempo real de tu estación meteorológica WeatherLink ubicada en la zona 1 de PYGANFLOR
-y calcula el VPD, un parámetro crucial para optimizar el crecimiento de las plantas.
+    # Información inicial
+    st.markdown("""
+    ## 📊 Calculadora de Déficit de Presión de Vapor (VPD)
 
-### 🎯 Rangos de VPD:
-- 🔵 **Muy bajo (< 0.4 kPa)**: Riesgo de hongos
-- 🟢 **Ideal (0.4 - 1.2 kPa)**: Óptimo para crecimiento
-- 🟠 **Moderado (1.2 - 2.0 kPa)**: Posible estrés hídrico
+    Esta aplicación obtiene datos en tiempo real de tu estación meteorológica WeatherLink ubicada en la zona 1 de PYGANFLOR
+    y calcula el VPD, un parámetro crucial para optimizar el crecimiento de las plantas.
+
+    ### 🎯 Rangos de VPD:
+    - 🔵 **Muy bajo (< 0.4 kPa)**: Riesgo de hongos
+    - 🟢 **Ideal (0.4 - 1.2 kPa)**: Óptimo para crecimiento
+    - 🟠 **Moderado (1.2 - 2.0 kPa)**: Posible estrés hídrico
 - 🔴 **Alto (> 2.0 kPa)**: Riesgo de cierre estomático
 
 ---
@@ -1272,104 +1277,15 @@ if st.button("🔍 Generar VPD", type="primary"):
                 siguiente = ultimo + timedelta(minutes=15)
                 st.info(f"⏱️ Próxima lectura automática: {siguiente.strftime('%H:%M:%S')}")
 
+        # Diagrama Mollier y resumen
         st.write("---")
-        st.subheader("📊 Visualizaciones Avanzadas")
-        
-    # 📊 VISUALIZACIONES (fuera del bloque if temp and hr para que no se pierdan al recargar)
-    # Opciones de visualización
-    col_viz1, col_viz2 = st.columns(2)
-    
-    with col_viz1:
-        mostrar_evolucion = st.checkbox("📈 Mostrar Evolución VPD por Hora", value=False, key="check_evolucion", help="Gráfico de líneas con histórico de VPD")
-    
-    with col_viz2:
-        mostrar_tabla = st.checkbox("📋 Mostrar Tabla de Datos Históricos", value=False, key="check_tabla", help="Tabla completa con semana, fecha, hora y VPD")
-    
-    # Mostrar gráfico de evolución si está activado
-    if mostrar_evolucion:
-        st.write("### 📈 Evolución de VPD en el Tiempo")
-        graficar_evolucion_vpd()
-    
-    # Mostrar tabla de datos históricos si está activada
-    if mostrar_tabla:
-        st.write("### 📋 Tabla de Datos Históricos")
-        try:
-            historico = cargar_historico()
-            
-            if not historico or len(historico) == 0:
-                st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
-            else:
-                st.info(f"📊 Cargados {len(historico)} registros desde Supabase")
-                
-                # Convertir a DataFrame
-                df_historico = pd.DataFrame(historico)
-                
-                # Traducir días de la semana
-                dias_es = {
-                    'Monday': 'Lunes',
-                    'Tuesday': 'Martes',
-                    'Wednesday': 'Miércoles',
-                    'Thursday': 'Jueves',
-                    'Friday': 'Viernes',
-                    'Saturday': 'Sábado',
-                    'Sunday': 'Domingo'
-                }
-                df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
-                
-                # Seleccionar y ordenar columnas
-                df_mostrar = df_historico[['dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
-                df_mostrar.columns = ['Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
-                df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
-                
-                # Mostrar tabla con formato
-                st.dataframe(
-                    df_mostrar,
-                    use_container_width=True,
-                    height=400
-                )
-                
-                # Botón para descargar CSV
-                csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
-                st.download_button(
-                    label="📥 Descargar datos en CSV",
-                    data=csv,
-                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
-                
-                # Información adicional
-                st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
-        except Exception as e:
-            st.error(f"❌ Error al mostrar tabla: {str(e)}")
-            st.info("💡 Si estás usando Supabase, verifica que la tabla 'vpd_historico' exista.")
-    
-    # Volver a cargar datos si existen para las siguientes secciones
-    if temp and hr:
-        
-        st.write("---")
-        
-        # 📱 OPCIÓN PARA MÓVIL: Solo datos o incluir gráfico Mollier
         mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
         
-        if not mostrar_grafico:
-            st.success("📱 **Modo móvil activado** - Solo datos básicos")
-            st.markdown(f"""
-            <div style="background-color: #E8F5E8; border: 2px solid #4CAF50; border-radius: 10px; padding: 20px; margin: 20px 0;">
-                <h3 style="color: #000000; text-align: center;">🌱 RESUMEN VPD PYGANFLOR</h3>
-                <ul style="color: #000000; font-size: 16px;">
-                    <li><strong>Zona Ideal VPD:</strong> 0.4 - 1.2 kPa</li>
-                    <li><strong>VPD Actual:</strong> {vpd} kPa</li>
-                    <li><strong>Estado:</strong> {rango}</li>
-                    <li><strong>Recomendación:</strong> {"✅ Condiciones óptimas" if "IDEAL" in rango else "⚠️ Ajustar riego/ventilación"}</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Mostrar gráfico psicrométrico solo si está activado
+        if mostrar_grafico:
             st.write("📊 **Diagrama Psicrométrico de Mollier**")
             graficar_psicrometrico(temp, hr, vpd)
         
-        # Tabla con datos históricos (simulada)
+        # Tabla con datos de la lectura actual
         st.subheader("📈 Resumen de la lectura")
         data = {
             'Parámetro': ['Temperatura', 'Humedad Relativa', 'VPD'],
@@ -1380,6 +1296,64 @@ if st.button("🔍 Generar VPD", type="primary"):
         st.table(df)
     else:
         st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
+
+# ===== TAB 2: GRÁFICA HISTÓRICA =====
+with tab2:
+    st.header("📈 Evolución de VPD en el Tiempo")
+    graficar_evolucion_vpd()
+
+# ===== TAB 3: TABLA DE DATOS =====
+with tab3:
+    st.header("📋 Tabla de Datos Históricos")
+    try:
+        historico = cargar_historico()
+        
+        if not historico or len(historico) == 0:
+            st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+        else:
+            st.info(f"📊 Cargados {len(historico)} registros desde Supabase")
+            
+            # Convertir a DataFrame
+            df_historico = pd.DataFrame(historico)
+            
+            # Traducir días de la semana
+            dias_es = {
+                'Monday': 'Lunes',
+                'Tuesday': 'Martes',
+                'Wednesday': 'Miércoles',
+                'Thursday': 'Jueves',
+                'Friday': 'Viernes',
+                'Saturday': 'Sábado',
+                'Sunday': 'Domingo'
+            }
+            df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
+            
+            # Seleccionar y ordenar columnas
+            df_mostrar = df_historico[['dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
+            df_mostrar.columns = ['Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
+            df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
+            
+            # Mostrar tabla con formato
+            st.dataframe(
+                df_mostrar,
+                use_container_width=True,
+                height=400
+            )
+            
+            # Botón para descargar CSV
+            csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
+            st.download_button(
+                label="📥 Descargar datos en CSV",
+                data=csv,
+                file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+            
+            # Información adicional
+            st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
+    except Exception as e:
+        st.error(f"❌ Error al mostrar tabla: {str(e)}")
+        st.info("💡 Si estás usando Supabase, verifica que la tabla 'vpd_historico' exista.")
 
 # Sidebar con información adicional
 st.sidebar.markdown("""
