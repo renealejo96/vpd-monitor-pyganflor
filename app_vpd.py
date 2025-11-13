@@ -187,26 +187,19 @@ def obtener_cliente_supabase():
     """Obtiene cliente de Supabase"""
     try:
         if not SUPABASE_AVAILABLE:
-            st.error("❌ Librería Supabase no disponible. Instala: pip install supabase")
             return None
         
         if "supabase_url" not in st.secrets:
-            st.error("❌ SUPABASE_URL no está en secrets")
             return None
             
         if "supabase_key" not in st.secrets:
-            st.error("❌ SUPABASE_KEY no está en secrets")
             return None
         
         url = st.secrets["supabase_url"]
         key = st.secrets["supabase_key"]
         
-        st.info(f"🔗 Conectando a: {url}")
-        client = create_client(url, key)
-        st.success("✅ Cliente Supabase creado exitosamente")
-        return client
+        return create_client(url, key)
     except Exception as e:
-        st.error(f"❌ Error al crear cliente Supabase: {str(e)}")
         return None
 
 def cargar_historico_supabase():
@@ -214,18 +207,29 @@ def cargar_historico_supabase():
     try:
         client = obtener_cliente_supabase()
         if not client:
-            st.warning("⚠️ No se pudo conectar a Supabase. Verifica las credenciales en Streamlit Cloud.")
             return []
         
         # Obtener últimos 7 días de registros
-        response = client.table('vpd_historico').select('*').order('timestamp', desc=True).limit(672).execute()
-        return response.data if response.data else []
+        response = client.table('vpd_historico').select('*').order('id', desc=True).limit(672).execute()
+        
+        if not response.data:
+            return []
+        
+        # Convertir tipos numéricos si vienen como strings
+        datos = []
+        for registro in response.data:
+            datos.append({
+                'timestamp': str(registro['timestamp']),
+                'fecha': str(registro['fecha']),
+                'hora': str(registro['hora']),
+                'dia_semana': str(registro['dia_semana']),
+                'temperatura': float(registro['temperatura']),
+                'humedad': float(registro['humedad']),
+                'vpd': float(registro['vpd'])
+            })
+        return datos
     except Exception as e:
-        error_msg = str(e)
-        if "does not exist" in error_msg or "relation" in error_msg:
-            st.warning("⚠️ La tabla 'vpd_historico' no existe en Supabase. Por favor, créala siguiendo las instrucciones en CONFIGURACION_SUPABASE.md")
-        else:
-            st.error(f"Error al cargar desde Supabase: {error_msg}")
+        st.error(f"Error al cargar desde Supabase: {str(e)}")
         return []
 
 def guardar_registro_supabase(registro):
@@ -241,10 +245,8 @@ def guardar_registro_supabase(registro):
         
         # Verificar que se insertó correctamente
         if response.data:
-            st.success(f"✅ Datos guardados en Supabase: {registro['hora']}")
             return True
         else:
-            st.warning("⚠️ Supabase no confirmó el guardado")
             return False
     except Exception as e:
         st.error(f"❌ Error al guardar en Supabase: {str(e)}")
