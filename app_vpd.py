@@ -8,7 +8,15 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 import os
+import json
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
+try:
+    from google.oauth2.service_account import Credentials
+    import gspread
+    GSHEETS_AVAILABLE = True
+except:
+    GSHEETS_AVAILABLE = False
 
 # � Configuración específica para móviles (especialmente iOS)
 st.set_page_config(
@@ -134,7 +142,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# �🔐 Credenciales de WeatherLink (Producción)
+# 🔐 Credenciales de WeatherLink (Producción)
 # En producción, usar st.secrets o variables de entorno
 try:
     # Intentar obtener de Streamlit secrets (producción)
@@ -146,6 +154,190 @@ except:
     API_KEY = os.getenv("API_KEY", "ljhgrfizwlad3hose74hycpa0jn1t4rz")
     API_SECRET = os.getenv("API_SECRET", "t9yutftlg7eddypqv9kocdpmtu9mwyhy")
     STATION_ID = int(os.getenv("STATION_ID", "167591"))
+
+# 📁 Configuración de almacenamiento
+HISTORICO_FILE = "vpd_historico.json"
+GSHEET_NAME = "VPD_PYGANFLOR_HISTORICO"
+
+# 🔧 Detectar si estamos en producción (Streamlit Cloud)
+def esta_en_produccion():
+    """Detecta si la app está corriendo en Streamlit Cloud"""
+    try:
+        # En Streamlit Cloud, st.secrets estará disponible y configurado
+        return "gcp_service_account" in st.secrets
+    except:
+        return False
+
+# 📊 Funciones para Google Sheets (Producción)
+def obtener_cliente_gsheets():
+    """Obtiene cliente autenticado de Google Sheets"""
+    try:
+        if not GSHEETS_AVAILABLE:
+            return None
+        
+        # Credenciales desde secrets de Streamlit Cloud
+        credentials = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+        )
+        return gspread.authorize(credentials)
+    except:
+        return None
+
+def cargar_historico_gsheets():
+    """Carga histórico desde Google Sheets"""
+    try:
+        client = obtener_cliente_gsheets()
+        if not client:
+            return []
+        
+        # Abrir o crear hoja
+        try:
+            sheet = client.open(GSHEET_NAME).sheet1
+        except:
+            # Crear nueva hoja si no existe
+            spreadsheet = client.create(GSHEET_NAME)
+            sheet = spreadsheet.sheet1
+            # Agregar encabezados
+            sheet.append_row(['timestamp', 'fecha', 'hora', 'dia_semana', 'temperatura', 'humedad', 'vpd'])
+        
+        # Obtener todos los registros
+        records = sheet.get_all_records()
+        return records
+    except Exception as e:
+        st.error(f"Error al cargar desde Google Sheets: {e}")
+        return []
+
+def guardar_registro_gsheets(registro):
+    """Guarda un nuevo registro en Google Sheets"""
+    try:
+        client = obtener_cliente_gsheets()
+        if not client:
+            return False
+        
+        # Abrir hoja
+        try:
+            sheet = client.open(GSHEET_NAME).sheet1
+        except:
+            # Crear si no existe
+            spreadsheet = client.create(GSHEET_NAME)
+            sheet = spreadsheet.sheet1
+            sheet.append_row(['timestamp', 'fecha', 'hora', 'dia_semana', 'temperatura', 'humedad', 'vpd'])
+        
+        # Agregar registro
+        sheet.append_row([
+            registro['timestamp'],
+            registro['fecha'],
+            registro['hora'],
+            registro['dia_semana'],
+            registro['temperatura'],
+            registro['humedad'],
+            registro['vpd']
+        ])
+        
+        # Limpiar registros viejos (mantener últimos 672 = 7 días)
+        all_values = sheet.get_all_values()
+        if len(all_values) > 673:  # +1 por encabezado
+            registros_a_eliminar = len(all_values) - 673
+            sheet.delete_rows(2, registros_a_eliminar + 1)  # Desde fila 2 (después de encabezados)
+        
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar en Google Sheets: {e}")
+        return False
+
+# 📊 Funciones locales JSON (Desarrollo)
+def cargar_historico_json():
+    """Carga el histórico de VPD desde el archivo JSON"""
+    try:
+        if Path(HISTORICO_FILE).exists():
+            with open(HISTORICO_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return []
+    except:
+        return []
+
+def guardar_historico_json(datos):
+    """Guarda el histórico de VPD en el archivo JSON"""
+    try:
+        with open(HISTORICO_FILE, 'w', encoding='utf-8') as f:
+            json.dump(datos, f, indent=2, ensure_ascii=False)
+        return True
+    except:
+        return False
+
+# 🔄 Funciones híbridas (Auto-detectan producción/desarrollo)
+def cargar_historico():
+    """Carga histórico desde Google Sheets (producción) o JSON (local)"""
+    if esta_en_produccion():
+        return cargar_historico_gsheets()
+    else:
+        return cargar_historico_json()
+
+def guardar_historico(datos):
+    """Guarda histórico en formato local (JSON)"""
+    # Solo se usa para desarrollo local
+    if not esta_en_produccion():
+        return guardar_historico_json(datos)
+
+def agregar_lectura_historico(temp, hr, vpd):
+    """Agrega una nueva lectura al histórico"""
+    colombia_tz = timezone(timedelta(hours=-5))
+    ahora = datetime.now(colombia_tz)
+    
+    # Crear nuevo registro
+    nuevo_registro = {
+        "timestamp": ahora.isoformat(),
+        "fecha": ahora.strftime("%d/%m/%Y"),
+        "hora": ahora.strftime("%H:%M:%S"),
+        "dia_semana": ahora.strftime("%A"),
+        "temperatura": temp,
+        "humedad": hr,
+        "vpd": vpd
+    }
+    
+    # Guardar según el entorno
+    if esta_en_produccion():
+        # En producción: guardar directamente en Google Sheets
+        return guardar_registro_gsheets(nuevo_registro)
+    else:
+        # En desarrollo: usar JSON local
+        historico = cargar_historico()
+        historico.append(nuevo_registro)
+        
+        # Mantener solo últimos 7 días
+        if len(historico) > 672:
+            historico = historico[-672:]
+        
+        guardar_historico(historico)
+        return True
+
+def obtener_ultimo_registro_tiempo():
+    """Obtiene el timestamp del último registro para determinar si han pasado 15 minutos"""
+    historico = cargar_historico()
+    if historico:
+        try:
+            ultimo = historico[-1]
+            return datetime.fromisoformat(ultimo["timestamp"])
+        except:
+            return None
+    return None
+
+def debe_guardar_lectura():
+    """Determina si deben haber pasado al menos 15 minutos desde la última lectura"""
+    ultimo_tiempo = obtener_ultimo_registro_tiempo()
+    if ultimo_tiempo is None:
+        return True
+    
+    colombia_tz = timezone(timedelta(hours=-5))
+    ahora = datetime.now(colombia_tz)
+    diferencia = ahora - ultimo_tiempo
+    
+    # Retornar True si han pasado al menos 15 minutos (900 segundos)
+    return diferencia.total_seconds() >= 900
 
 # 🔑 Función para validar credenciales
 def validar_credenciales():
@@ -492,6 +684,83 @@ Si recibes un error 401, verifica:
     except Exception as e:
         st.error(f"❌ Error inesperado: {str(e)}")
         return None, None
+
+# 📈 Gráfico de líneas - Evolución VPD por hora
+def graficar_evolucion_vpd():
+    """Genera gráfico de líneas mostrando la evolución del VPD en el tiempo"""
+    historico = cargar_historico()
+    
+    if len(historico) == 0:
+        st.warning("⚠️ No hay datos históricos disponibles. Genera al menos una lectura de VPD.")
+        return
+    
+    # Convertir a DataFrame
+    df = pd.DataFrame(historico)
+    df['datetime'] = pd.to_datetime(df['timestamp'])
+    df = df.sort_values('datetime')
+    
+    # Crear figura
+    fig = go.Figure()
+    
+    # Línea principal de VPD
+    fig.add_trace(go.Scatter(
+        x=df['datetime'],
+        y=df['vpd'],
+        mode='lines+markers',
+        name='VPD',
+        line=dict(color='#2196F3', width=3),
+        marker=dict(size=8, color='#1976D2'),
+        hovertemplate='<b>%{x|%d/%m/%Y %H:%M}</b><br>VPD: %{y} kPa<extra></extra>'
+    ))
+    
+    # Zona ideal (0.4 - 1.2 kPa)
+    fig.add_hrect(
+        y0=0.4, y1=1.2,
+        fillcolor="green", opacity=0.1,
+        layer="below", line_width=0,
+        annotation_text="Zona Ideal",
+        annotation_position="top left"
+    )
+    
+    # Líneas de referencia
+    fig.add_hline(y=0.4, line_dash="dash", line_color="green", opacity=0.5, annotation_text="VPD Min (0.4)")
+    fig.add_hline(y=1.2, line_dash="dash", line_color="green", opacity=0.5, annotation_text="VPD Max (1.2)")
+    
+    # Configuración del gráfico
+    fig.update_layout(
+        title='📈 Evolución de VPD - PYGANFLOR',
+        xaxis_title='Fecha y Hora',
+        yaxis_title='VPD (kPa)',
+        height=500,
+        hovermode='x unified',
+        showlegend=False,
+        template='plotly_white',
+        xaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgray',
+            tickformat='%d/%m %H:%M'
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridwidth=1,
+            gridcolor='lightgray',
+            range=[0, max(df['vpd'].max() + 0.5, 2.0)]
+        )
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Estadísticas rápidas
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("📊 Total Registros", len(df))
+    with col2:
+        st.metric("📈 VPD Promedio", f"{df['vpd'].mean():.2f} kPa")
+    with col3:
+        st.metric("⬆️ VPD Máximo", f"{df['vpd'].max():.2f} kPa")
+    with col4:
+        st.metric("⬇️ VPD Mínimo", f"{df['vpd'].min():.2f} kPa")
 
 # 🎨 Gráfico psicrométrico de Mollier
 def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
@@ -884,8 +1153,85 @@ if st.button("🔍 Generar VPD", type="primary"):
             st.metric("📈 VPD", f"{vpd} kPa")
         
         st.info(f"📋 **Estado**: {rango}")
+        
+        # 💾 Guardar en histórico si han pasado 15 minutos
+        if debe_guardar_lectura():
+            if agregar_lectura_historico(temp, hr, vpd):
+                st.success("💾 Lectura guardada en histórico automáticamente")
+        else:
+            ultimo = obtener_ultimo_registro_tiempo()
+            if ultimo:
+                colombia_tz = timezone(timedelta(hours=-5))
+                siguiente = ultimo + timedelta(minutes=15)
+                st.info(f"⏱️ Próxima lectura automática: {siguiente.strftime('%H:%M:%S')}")
 
-        # 📱 OPCIÓN PARA MÓVIL: Solo datos o incluir gráfico
+        st.write("---")
+        st.subheader("📊 Visualizaciones Avanzadas")
+        
+        # Opciones de visualización
+        col_viz1, col_viz2 = st.columns(2)
+        
+        with col_viz1:
+            mostrar_evolucion = st.checkbox("📈 Mostrar Evolución VPD por Hora", value=False, help="Gráfico de líneas con histórico de VPD")
+        
+        with col_viz2:
+            mostrar_tabla = st.checkbox("📋 Mostrar Tabla de Datos Históricos", value=False, help="Tabla completa con semana, fecha, hora y VPD")
+        
+        # Mostrar gráfico de evolución si está activado
+        if mostrar_evolucion:
+            st.write("### 📈 Evolución de VPD en el Tiempo")
+            graficar_evolucion_vpd()
+        
+        # Mostrar tabla de datos históricos si está activada
+        if mostrar_tabla:
+            st.write("### 📋 Tabla de Datos Históricos")
+            historico = cargar_historico()
+            
+            if len(historico) > 0:
+                # Convertir a DataFrame
+                df_historico = pd.DataFrame(historico)
+                
+                # Traducir días de la semana
+                dias_es = {
+                    'Monday': 'Lunes',
+                    'Tuesday': 'Martes',
+                    'Wednesday': 'Miércoles',
+                    'Thursday': 'Jueves',
+                    'Friday': 'Viernes',
+                    'Saturday': 'Sábado',
+                    'Sunday': 'Domingo'
+                }
+                df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
+                
+                # Seleccionar y ordenar columnas
+                df_mostrar = df_historico[['dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
+                df_mostrar.columns = ['Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
+                df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
+                
+                # Mostrar tabla con formato
+                st.dataframe(
+                    df_mostrar,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Botón para descargar CSV
+                csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Descargar datos en CSV",
+                    data=csv,
+                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
+                
+                # Información adicional
+                st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
+            else:
+                st.warning("⚠️ No hay datos históricos disponibles")
+        
+        st.write("---")
+        
+        # 📱 OPCIÓN PARA MÓVIL: Solo datos o incluir gráfico Mollier
         mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
         
         if not mostrar_grafico:
