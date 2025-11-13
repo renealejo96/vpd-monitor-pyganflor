@@ -1340,14 +1340,35 @@ with tab3:
                 height=400
             )
             
-            # Botón para descargar CSV
-            csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
-            st.download_button(
-                label="📥 Descargar datos en CSV",
-                data=csv,
-                file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
+            # Botones de descarga
+            col_btn1, col_btn2 = st.columns(2)
+            
+            with col_btn1:
+                # Botón para descargar CSV
+                csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
+                st.download_button(
+                    label="📥 Descargar CSV",
+                    data=csv,
+                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+            
+            with col_btn2:
+                # Botón para descargar Excel
+                from io import BytesIO
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df_mostrar.to_excel(writer, index=False, sheet_name='VPD Histórico')
+                buffer.seek(0)
+                
+                st.download_button(
+                    label="📊 Descargar Excel",
+                    data=buffer,
+                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
             
             # Información adicional
             st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
