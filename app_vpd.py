@@ -196,13 +196,18 @@ def cargar_historico_supabase():
     try:
         client = obtener_cliente_supabase()
         if not client:
+            st.warning("⚠️ No se pudo conectar a Supabase. Verifica las credenciales en Streamlit Cloud.")
             return []
         
         # Obtener últimos 7 días de registros
         response = client.table('vpd_historico').select('*').order('timestamp', desc=True).limit(672).execute()
         return response.data if response.data else []
     except Exception as e:
-        st.error(f"Error al cargar desde Supabase: {e}")
+        error_msg = str(e)
+        if "does not exist" in error_msg or "relation" in error_msg:
+            st.warning("⚠️ La tabla 'vpd_historico' no existe en Supabase. Por favor, créala siguiendo las instrucciones en CONFIGURACION_SUPABASE.md")
+        else:
+            st.error(f"Error al cargar desde Supabase: {error_msg}")
         return []
 
 def guardar_registro_supabase(registro):
@@ -749,16 +754,24 @@ Si recibes un error 401, verifica:
 # 📈 Gráfico de líneas - Evolución VPD por hora
 def graficar_evolucion_vpd():
     """Genera gráfico de líneas mostrando la evolución del VPD en el tiempo"""
-    historico = cargar_historico()
-    
-    if len(historico) == 0:
-        st.warning("⚠️ No hay datos históricos disponibles. Genera al menos una lectura de VPD.")
+    try:
+        historico = cargar_historico()
+        
+        if not historico or len(historico) == 0:
+            st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+            return
+        
+        # Convertir a DataFrame
+        df = pd.DataFrame(historico)
+        if 'timestamp' not in df.columns:
+            st.error("❌ Error: Los datos históricos no tienen el formato correcto.")
+            return
+            
+        df['datetime'] = pd.to_datetime(df['timestamp'])
+        df = df.sort_values('datetime')
+    except Exception as e:
+        st.error(f"❌ Error al cargar datos históricos: {str(e)}")
         return
-    
-    # Convertir a DataFrame
-    df = pd.DataFrame(historico)
-    df['datetime'] = pd.to_datetime(df['timestamp'])
-    df = df.sort_values('datetime')
     
     # Crear figura
     fig = go.Figure()
@@ -1246,49 +1259,53 @@ if st.button("🔍 Generar VPD", type="primary"):
         # Mostrar tabla de datos históricos si está activada
         if mostrar_tabla:
             st.write("### 📋 Tabla de Datos Históricos")
-            historico = cargar_historico()
-            
-            if len(historico) > 0:
-                # Convertir a DataFrame
-                df_historico = pd.DataFrame(historico)
+            try:
+                historico = cargar_historico()
                 
-                # Traducir días de la semana
-                dias_es = {
-                    'Monday': 'Lunes',
-                    'Tuesday': 'Martes',
-                    'Wednesday': 'Miércoles',
-                    'Thursday': 'Jueves',
-                    'Friday': 'Viernes',
-                    'Saturday': 'Sábado',
-                    'Sunday': 'Domingo'
-                }
-                df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
-                
-                # Seleccionar y ordenar columnas
-                df_mostrar = df_historico[['dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
-                df_mostrar.columns = ['Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
-                df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
-                
-                # Mostrar tabla con formato
-                st.dataframe(
-                    df_mostrar,
-                    use_container_width=True,
-                    height=400
-                )
-                
-                # Botón para descargar CSV
-                csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
-                st.download_button(
-                    label="📥 Descargar datos en CSV",
-                    data=csv,
-                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv"
-                )
-                
-                # Información adicional
-                st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
-            else:
-                st.warning("⚠️ No hay datos históricos disponibles")
+                if not historico or len(historico) == 0:
+                    st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+                else:
+                    # Convertir a DataFrame
+                    df_historico = pd.DataFrame(historico)
+                    
+                    # Traducir días de la semana
+                    dias_es = {
+                        'Monday': 'Lunes',
+                        'Tuesday': 'Martes',
+                        'Wednesday': 'Miércoles',
+                        'Thursday': 'Jueves',
+                        'Friday': 'Viernes',
+                        'Saturday': 'Sábado',
+                        'Sunday': 'Domingo'
+                    }
+                    df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
+                    
+                    # Seleccionar y ordenar columnas
+                    df_mostrar = df_historico[['dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
+                    df_mostrar.columns = ['Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
+                    df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
+                    
+                    # Mostrar tabla con formato
+                    st.dataframe(
+                        df_mostrar,
+                        use_container_width=True,
+                        height=400
+                    )
+                    
+                    # Botón para descargar CSV
+                    csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
+                    st.download_button(
+                        label="📥 Descargar datos en CSV",
+                        data=csv,
+                        file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv"
+                    )
+                    
+                    # Información adicional
+                    st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
+            except Exception as e:
+                st.error(f"❌ Error al mostrar tabla: {str(e)}")
+                st.info("💡 Si estás usando Supabase, verifica que la tabla 'vpd_historico' exista.")
         
         st.write("---")
         
