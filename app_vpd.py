@@ -1159,6 +1159,22 @@ if st.sidebar.checkbox("🔧 Debug Móvil", help="Activar si tienes problemas en
 
 st.title("🌿 Monitor VPD PYGANFLOR")
 
+# 🔄 Auto-refresco cada 15 minutos
+import time as time_module
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = time_module.time()
+
+# Calcular tiempo desde último refresco
+tiempo_transcurrido = time_module.time() - st.session_state.last_refresh
+if tiempo_transcurrido >= 900:  # 900 segundos = 15 minutos
+    st.session_state.last_refresh = time_module.time()
+    st.rerun()
+
+# Mostrar contador de próximo refresco
+minutos_restantes = int((900 - tiempo_transcurrido) / 60)
+segundos_restantes = int((900 - tiempo_transcurrido) % 60)
+st.sidebar.info(f"🔄 Próximo refresco en: {minutos_restantes}:{segundos_restantes:02d}")
+
 # 🔄 CREAR TABS PARA SEPARAR CONTENIDO
 tab1, tab2, tab3 = st.tabs(["📊 Datos Actuales", "📈 Gráfica Histórica", "📋 Tabla de Datos"])
 
@@ -1183,16 +1199,14 @@ with tab1:
 ---
 """)
 
-# Botón para obtener datos
-if st.button("🔍 Generar VPD", type="primary"):
-    # Obtener hora actual de Colombia (UTC-5)
-    colombia_tz = timezone(timedelta(hours=-5))
-    hora_actual = datetime.now(colombia_tz).strftime("%d/%m/%Y %H:%M:%S")
-    
-    with st.spinner("🔄 Obteniendo datos de la estación..."):
-        temp, hr = obtener_datos_estacion()
-        
-    if temp is not None and hr is not None:
+# 🔄 OBTENER DATOS AUTOMÁTICAMENTE (siempre que se carga la página)
+colombia_tz = timezone(timedelta(hours=-5))
+hora_actual = datetime.now(colombia_tz).strftime("%d/%m/%Y %H:%M:%S")
+
+with st.spinner("🔄 Obteniendo datos de la estación..."):
+    temp, hr = obtener_datos_estacion()
+
+if temp is not None and hr is not None:
         vpd = calcular_vpd(temp, hr)
         rango = clasificar_vpd(vpd)
 
@@ -1266,10 +1280,12 @@ if st.button("🔍 Generar VPD", type="primary"):
         
         # 💾 Guardar en histórico si han pasado 15 minutos
         if debe_guardar_lectura():
-            st.info("💾 Guardando lectura automática...")
-            resultado = agregar_lectura_historico(temp, hr, vpd)
-            if not resultado:
-                st.error("❌ No se pudo guardar la lectura. Revisa los mensajes de error arriba.")
+            with st.spinner("💾 Guardando lectura automática..."):
+                resultado = agregar_lectura_historico(temp, hr, vpd)
+                if resultado:
+                    st.success("✅ Lectura guardada exitosamente en Supabase")
+                else:
+                    st.error("❌ No se pudo guardar la lectura en Supabase")
         else:
             ultimo = obtener_ultimo_registro_tiempo()
             if ultimo:
@@ -1294,8 +1310,8 @@ if st.button("🔍 Generar VPD", type="primary"):
         }
         df = pd.DataFrame(data)
         st.table(df)
-    else:
-        st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
+else:
+    st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
 
 # ===== TAB 2: GRÁFICA HISTÓRICA =====
 with tab2:
