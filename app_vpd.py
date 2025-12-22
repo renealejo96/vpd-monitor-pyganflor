@@ -165,13 +165,16 @@ except:
 HISTORICO_FILE = "vpd_historico.json"
 GSHEET_NAME = "VPD_PYGANFLOR_HISTORICO"
 
-# 🔧 Detectar si estamos en producción (Streamlit Cloud)
+# 🔧 Detectar si estamos en producción (Streamlit Cloud o Docker)
 def esta_en_produccion():
-    """Detecta si la app está corriendo en Streamlit Cloud"""
+    """Detecta si la app está corriendo en Streamlit Cloud o Docker con variables de entorno"""
     try:
-        # Priorizar Supabase sobre Google Sheets
-        if "supabase_url" in st.secrets and "supabase_key" in st.secrets:
-            st.sidebar.success("🟢 Supabase detectado")
+        # Priorizar variables de entorno (Docker) sobre st.secrets (Streamlit Cloud)
+        if os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY"):
+            st.sidebar.success("🟢 Supabase detectado (env vars)")
+            return "supabase"
+        elif "supabase_url" in st.secrets and "supabase_key" in st.secrets:
+            st.sidebar.success("🟢 Supabase detectado (secrets)")
             return "supabase"
         elif "gcp_service_account" in st.secrets:
             st.sidebar.info("🔵 Google Sheets detectado")
@@ -184,19 +187,22 @@ def esta_en_produccion():
 
 # 📊 Funciones para Supabase (Producción - Recomendado)
 def obtener_cliente_supabase():
-    """Obtiene cliente de Supabase"""
+    """Obtiene cliente de Supabase desde variables de entorno o st.secrets"""
     try:
         if not SUPABASE_AVAILABLE:
             return None
         
-        if "supabase_url" not in st.secrets:
-            return None
-            
-        if "supabase_key" not in st.secrets:
-            return None
+        # Intentar primero desde variables de entorno (Docker)
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
         
-        url = st.secrets["supabase_url"]
-        key = st.secrets["supabase_key"]
+        # Si no están en env, intentar desde st.secrets (Streamlit Cloud)
+        if not url or not key:
+            if "supabase_url" in st.secrets and "supabase_key" in st.secrets:
+                url = st.secrets["supabase_url"]
+                key = st.secrets["supabase_key"]
+            else:
+                return None
         
         return create_client(url, key)
     except Exception as e:
@@ -673,7 +679,7 @@ def probar_autenticacion():
     except Exception as e:
         st.sidebar.error(f"❌ Error en la prueba: {str(e)}")
 
-# 📈 Función para calcular VPD
+# 📈 Función para calcular VPD con ecuacion de tetens
 def calcular_vpd(temp_c, hr):
     svp = 0.6108 * math.exp((17.27 * temp_c) / (temp_c + 237.3))
     vpd = (1 - hr / 100) * svp

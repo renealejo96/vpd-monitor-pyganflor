@@ -25,6 +25,16 @@ venv.bak/
 secrets_para_streamlit_cloud.txt
 .env
 
+# Archivos de desarrollo/documentación (no necesarios en producción)
+deploy_local.bat
+deploy_local.sh
+instrucciones_github.bat
+instrucciones_qr.txt
+Procfile
+secrets_ejemplo.toml
+app_mobile.py
+CONFIGURACION_*.md
+
 # Logs
 *.log
 
