@@ -1,0 +1,1 @@
+__pycache__/\n*.py[cod]\n*.pyo\n*.pyd\n*.log\n*.sqlite3\n.env\n.git\n.gitignore\n.vscode/\n.streamlit/\nvpd_historico.json\nsecrets_ejemplo.toml\nsecrets_para_streamlit_cloud.txt\ndeploy_local.bat\ndeploy_local.sh\ninstrucciones_github.bat\nProcfile\nREADME.md\n

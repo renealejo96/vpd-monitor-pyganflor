@@ -1,0 +1,1 @@
+version: "3.9"\n\nservices:\n  vpd_app:\n    build: .\n    container_name: vpd_app\n    ports:\n      - "8501:8501"\n    env_file:\n      - .env\n    volumes:\n      - ./vpd_historico.json:/app/vpd_historico.json\n    restart: unless-stopped\n
