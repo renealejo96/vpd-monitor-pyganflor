@@ -22,6 +22,8 @@ venv.bak/
 
 # Streamlit
 .streamlit/secrets.toml
+secrets_para_streamlit_cloud.txt
+.env
 
 # Logs
 *.log
