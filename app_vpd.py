@@ -11,6 +11,12 @@ import os
 import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from dotenv import load_dotenv
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
+
+# Cargar variables de entorno del archivo .env
+load_dotenv()
 try:
     from google.oauth2.service_account import Credentials
     import gspread
@@ -148,22 +154,32 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 🔐 Credenciales de WeatherLink (Producción)
-# En producción, usar st.secrets o variables de entorno
-try:
-    # Intentar obtener de Streamlit secrets (producción)
-    API_KEY = st.secrets["api"]["API_KEY"]
-    API_SECRET = st.secrets["api"]["API_SECRET"] 
-    STATION_ID = int(st.secrets["api"]["STATION_ID"])
-except:
-    # Fallback para desarrollo local
-    API_KEY = os.getenv("API_KEY", "ljhgrfizwlad3hose74hycpa0jn1t4rz")
-    API_SECRET = os.getenv("API_SECRET", "t9yutftlg7eddypqv9kocdpmtu9mwyhy")
-    STATION_ID = int(os.getenv("STATION_ID", "167591"))
+# 🔐 Configuración de múltiples fincas
+FINCAS_CONFIG = {
+    "PYGANFLOR": {
+        "nombre": "Pyganflor",
+        "api_key": os.getenv("FINCA1_API_KEY", "ljhgrfizwlad3hose74hycpa0jn1t4rz"),
+        "api_secret": os.getenv("FINCA1_API_SECRET", "t9yutftlg7eddypqv9kocdpmtu9mwyhy"),
+        "station_id": int(os.getenv("FINCA1_STATION_ID", "167591")),
+    },
+    "URCUQUI": {
+        "nombre": "Florsani Urcuquí",
+        "api_key": os.getenv("FINCA2_API_KEY", ""),
+        "api_secret": os.getenv("FINCA2_API_SECRET", ""),
+        "station_id": int(os.getenv("FINCA2_STATION_ID", "0")),
+    },
+    "MALCHINGUI": {
+        "nombre": "Malchinguí",
+        "api_key": os.getenv("FINCA3_API_KEY", ""),
+        "api_secret": os.getenv("FINCA3_API_SECRET", ""),
+        "station_id": int(os.getenv("FINCA3_STATION_ID", "0")),
+    }
+}
 
 # 📁 Configuración de almacenamiento
 HISTORICO_FILE = "vpd_historico.json"
-GSHEET_NAME = "VPD_PYGANFLOR_HISTORICO"
+GSHEET_NAME = "VPD_HISTORICO"
+
 
 # 🔧 Detectar si estamos en producción (Streamlit Cloud o Docker)
 def esta_en_produccion():
@@ -171,18 +187,13 @@ def esta_en_produccion():
     try:
         # Priorizar variables de entorno (Docker) sobre st.secrets (Streamlit Cloud)
         if os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY"):
-            st.sidebar.success("🟢 Supabase detectado (env vars)")
             return "supabase"
         elif "supabase_url" in st.secrets and "supabase_key" in st.secrets:
-            st.sidebar.success("🟢 Supabase detectado (secrets)")
             return "supabase"
         elif "gcp_service_account" in st.secrets:
-            st.sidebar.info("🔵 Google Sheets detectado")
             return "gsheets"
-        st.sidebar.warning("🟡 Modo desarrollo (local JSON)")
         return False
     except Exception as e:
-        st.sidebar.error(f"🔴 Error detectando entorno: {str(e)}")
         return False
 
 # 📊 Funciones para Supabase (Producción - Recomendado)
@@ -208,15 +219,15 @@ def obtener_cliente_supabase():
     except Exception as e:
         return None
 
-def cargar_historico_supabase():
-    """Carga histórico desde Supabase"""
+def cargar_historico_supabase(finca_id):
+    """Carga histórico desde Supabase filtrado por finca"""
     try:
         client = obtener_cliente_supabase()
         if not client:
             return []
         
-        # Obtener últimos 7 días de registros
-        response = client.table('vpd_historico').select('*').order('id', desc=True).limit(672).execute()
+        # Obtener últimos 7 días de registros de la finca seleccionada
+        response = client.table('vpd_historico').select('*').eq('finca', finca_id).order('id', desc=True).limit(672).execute()
         
         if not response.data:
             return []
@@ -225,6 +236,7 @@ def cargar_historico_supabase():
         datos = []
         for registro in response.data:
             datos.append({
+                'finca': str(registro.get('finca', finca_id)),  # Incluir campo finca
                 'timestamp': str(registro['timestamp']),
                 'fecha': str(registro['fecha']),
                 'hora': str(registro['hora']),
@@ -235,16 +247,17 @@ def cargar_historico_supabase():
             })
         return datos
     except Exception as e:
-        st.error(f"Error al cargar desde Supabase: {str(e)}")
         return []
 
-def guardar_registro_supabase(registro):
-    """Guarda un nuevo registro en Supabase"""
+def guardar_registro_supabase(registro, finca_id):
+    """Guarda un nuevo registro en Supabase con identificador de finca"""
     try:
         client = obtener_cliente_supabase()
         if not client:
-            st.error("❌ No se pudo conectar a Supabase. Verifica las credenciales.")
             return False
+        
+        # Agregar campo finca al registro
+        registro['finca'] = finca_id
         
         # Insertar registro
         response = client.table('vpd_historico').insert(registro).execute()
@@ -255,8 +268,6 @@ def guardar_registro_supabase(registro):
         else:
             return False
     except Exception as e:
-        st.error(f"❌ Error al guardar en Supabase: {str(e)}")
-        st.info("💡 Verifica que la tabla 'vpd_historico' exista y tenga las columnas correctas")
         return False
 
 # 📊 Funciones para Google Sheets (Producción)
@@ -299,7 +310,6 @@ def cargar_historico_gsheets():
         records = sheet.get_all_records()
         return records
     except Exception as e:
-        st.error(f"Error al cargar desde Google Sheets: {e}")
         return []
 
 def guardar_registro_gsheets(registro):
@@ -337,7 +347,6 @@ def guardar_registro_gsheets(registro):
         
         return True
     except Exception as e:
-        st.error(f"Error al guardar en Google Sheets: {e}")
         return False
 
 # 📊 Funciones locales JSON (Desarrollo)
@@ -361,11 +370,11 @@ def guardar_historico_json(datos):
         return False
 
 # 🔄 Funciones híbridas (Auto-detectan producción/desarrollo)
-def cargar_historico():
+def cargar_historico(finca_id):
     """Carga histórico desde Supabase/Google Sheets (producción) o JSON (local)"""
     env = esta_en_produccion()
     if env == "supabase":
-        return cargar_historico_supabase()
+        return cargar_historico_supabase(finca_id)
     elif env == "gsheets":
         return cargar_historico_gsheets()
     else:
@@ -377,7 +386,7 @@ def guardar_historico(datos):
     if not esta_en_produccion():
         return guardar_historico_json(datos)
 
-def agregar_lectura_historico(temp, hr, vpd):
+def agregar_lectura_historico(temp, hr, vpd, finca_id):
     """Agrega una nueva lectura al histórico"""
     colombia_tz = timezone(timedelta(hours=-5))
     ahora = datetime.now(colombia_tz)
@@ -397,13 +406,13 @@ def agregar_lectura_historico(temp, hr, vpd):
     env = esta_en_produccion()
     if env == "supabase":
         # Producción: Supabase (recomendado)
-        return guardar_registro_supabase(nuevo_registro)
+        return guardar_registro_supabase(nuevo_registro, finca_id)
     elif env == "gsheets":
         # Producción: Google Sheets (alternativa)
         return guardar_registro_gsheets(nuevo_registro)
     else:
         # Desarrollo: JSON local
-        historico = cargar_historico()
+        historico = cargar_historico(finca_id)
         historico.append(nuevo_registro)
         
         # Mantener solo últimos 7 días
@@ -413,9 +422,9 @@ def agregar_lectura_historico(temp, hr, vpd):
         guardar_historico(historico)
         return True
 
-def obtener_ultimo_registro_tiempo():
+def obtener_ultimo_registro_tiempo(finca_id):
     """Obtiene el timestamp del último registro para determinar si han pasado 15 minutos"""
-    historico = cargar_historico()
+    historico = cargar_historico(finca_id)
     if historico:
         try:
             ultimo = historico[-1]
@@ -424,9 +433,9 @@ def obtener_ultimo_registro_tiempo():
             return None
     return None
 
-def debe_guardar_lectura():
+def debe_guardar_lectura(finca_id):
     """Determina si deben haber pasado al menos 15 minutos desde la última lectura"""
-    ultimo_tiempo = obtener_ultimo_registro_tiempo()
+    ultimo_tiempo = obtener_ultimo_registro_tiempo(finca_id)
     if ultimo_tiempo is None:
         return True
     
@@ -448,15 +457,15 @@ def validar_credenciales():
         probar_autenticacion()
 
 # 🔬 Función para explorar la estructura completa de datos
-def explorar_datos_crudos():
+def explorar_datos_crudos(station_id, api_key, api_secret):
     """Explora la estructura completa de datos de la estación"""
     try:
-        url = f"https://api.weatherlink.com/v2/current/{STATION_ID}"
+        url = f"https://api.weatherlink.com/v2/current/{station_id}"
         headers = {
-            "X-Api-Secret": API_SECRET
+            "X-Api-Secret": api_secret
         }
         params = {
-            "api-key": API_KEY
+            "api-key": api_key
         }
         
         st.write("🔬 **Explorando estructura completa de datos...**")
@@ -697,14 +706,14 @@ def clasificar_vpd(vpd):
         return "🔴 Alto (riesgo de cierre estomático)"
 
 # 🌐 Consulta a la API
-def obtener_datos_estacion():
+def obtener_datos_estacion(station_id, api_key, api_secret):
     try:
-        url = f"https://api.weatherlink.com/v2/current/{STATION_ID}"
+        url = f"https://api.weatherlink.com/v2/current/{station_id}"
         headers = {
-            "X-Api-Secret": API_SECRET
+            "X-Api-Secret": api_secret
         }
         params = {
-            "api-key": API_KEY
+            "api-key": api_key
         }
         
         response = requests.get(url, headers=headers, params=params, timeout=10)
@@ -728,7 +737,6 @@ Si recibes un error 401, verifica:
         
         # Verificar que la respuesta tenga sensores
         if 'sensors' not in data or not data['sensors']:
-            st.error("❌ No se encontraron sensores en la respuesta de la API")
             return None, None
         
         # Buscar temperatura y humedad en el sensor correcto
@@ -736,33 +744,31 @@ Si recibes un error 401, verifica:
         hr = None
         
         for i, sensor in enumerate(data['sensors']):
-            if sensor.get('data'):
+            if sensor.get('data') and len(sensor['data']) > 0:
                 sensor_data = sensor['data'][0]
                 sensor_type = sensor.get('sensor_type', 'N/A')
                 
-                # Buscar en sensor que tenga 'hum' y 'temp'
-                if 'hum' in sensor_data and 'temp' in sensor_data:
-                    temp_f = sensor_data['temp']  # Temperatura en Fahrenheit
-                    temp = (temp_f - 32) * 5/9  # Convertir a Celsius
-                    hr = sensor_data['hum']
-                    break
-                # También buscar en sensor tipo 53 específicamente
-                elif sensor_type == 53:
-                    for temp_key in ['temp', 'temperature', 'temp_out', 'temp_f']:
-                        if temp_key in sensor_data:
-                            temp_f = sensor_data[temp_key]
-                            temp = (temp_f - 32) * 5/9
-                            break
-                    for humidity_key in ['hum', 'humidity', 'humidity_out', 'rh']:
-                        if humidity_key in sensor_data:
-                            hr = sensor_data[humidity_key]
-                            break
-                    if temp is not None and hr is not None:
+                # Buscar temperatura (varias variantes)
+                temp_f = None
+                for temp_key in ['temp', 'temp_out', 'temperature']:
+                    if temp_key in sensor_data:
+                        temp_f = sensor_data[temp_key]
                         break
+                
+                # Buscar humedad (varias variantes)
+                hum_value = None
+                for hum_key in ['hum', 'hum_out', 'humidity']:
+                    if hum_key in sensor_data:
+                        hum_value = sensor_data[hum_key]
+                        break
+                
+                # Si encontramos ambos valores, convertir y guardar
+                if temp_f is not None and hum_value is not None:
+                    temp = (temp_f - 32) * 5/9  # Convertir a Celsius
+                    hr = hum_value
+                    break
         
         if temp is None or hr is None:
-            st.error("❌ No se pudieron encontrar datos de temperatura o humedad")
-            st.write("Verifica que la estación esté enviando datos")
             return None, None
             
         return temp, hr
@@ -783,46 +789,129 @@ Si recibes un error 401, verifica:
         st.error(f"❌ Error inesperado: {str(e)}")
         return None, None
 
-# 📈 Gráfico de líneas - Evolución VPD por hora
-def graficar_evolucion_vpd():
-    """Genera gráfico de líneas mostrando la evolución del VPD en el tiempo"""
-    try:
-        historico = cargar_historico()
-        
-        if not historico or len(historico) == 0:
-            st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
-            return
-        
-        st.info(f"📊 Cargados {len(historico)} registros desde Supabase")
-        
-        # Convertir a DataFrame
-        df = pd.DataFrame(historico)
-        
-        # Verificar columnas
-        if 'timestamp' not in df.columns:
-            st.error(f"❌ Error: Columnas encontradas: {list(df.columns)}")
-            st.error(f"Primer registro: {historico[0]}")
-            return
+# � Función para mostrar resumen de todas las fincas
+def mostrar_resumen_fincas():
+    """Muestra una tabla resumen con los últimos datos de todas las fincas configuradas"""
+    st.subheader("📊 Resumen de Todas las Fincas")
+    
+    datos_resumen = []
+    
+    # Obtener hora actual
+    colombia_tz = timezone(timedelta(hours=-5))
+    hora_actual = datetime.now(colombia_tz).strftime("%H:%M:%S")
+    
+    for finca_id, config in FINCAS_CONFIG.items():
+        if config["station_id"] > 0:
+            # Obtener datos en tiempo real
+            temp, hr = obtener_datos_estacion(config["station_id"], config["api_key"], config["api_secret"])
             
-        df['datetime'] = pd.to_datetime(df['timestamp'])
-        df = df.sort_values('datetime')
-    except Exception as e:
-        st.error(f"❌ Error al cargar datos históricos: {str(e)}")
-        return
+            if temp is not None and hr is not None:
+                vpd = calcular_vpd(temp, hr)
+                estado = clasificar_vpd(vpd)
+                
+                datos_resumen.append({
+                    'Finca': config["nombre"],
+                    'Hora': hora_actual,
+                    'Temperatura (°C)': f"{temp:.1f}",
+                    'Humedad (%)': f"{hr}",
+                    'VPD (kPa)': f"{vpd}",
+                    'Estado': estado
+                })
+            else:
+                datos_resumen.append({
+                    'Finca': config["nombre"],
+                    'Hora': hora_actual,
+                    'Temperatura (°C)': '-',
+                    'Humedad (%)': '-',
+                    'VPD (kPa)': '-',
+                    'Estado': '⚠️ Sin datos'
+                })
     
-    # Crear figura
-    fig = go.Figure()
+    if datos_resumen:
+        df_resumen = pd.DataFrame(datos_resumen)
+        st.dataframe(df_resumen, use_container_width=True, hide_index=True)
+    else:
+        st.warning("No hay fincas configuradas para mostrar")
+
+# �📈 Gráfico de líneas - Evolución VPD por hora
+def graficar_evolucion_vpd(finca_id, comparar_fincas=False):
+    """Genera gráfico de líneas mostrando la evolución del VPD en el tiempo"""
     
-    # Línea principal de VPD
-    fig.add_trace(go.Scatter(
-        x=df['datetime'],
-        y=df['vpd'],
-        mode='lines+markers',
-        name='VPD',
-        line=dict(color='#2196F3', width=3),
-        marker=dict(size=8, color='#1976D2'),
-        hovertemplate='<b>%{x|%d/%m/%Y %H:%M}</b><br>VPD: %{y} kPa<extra></extra>'
-    ))
+    if comparar_fincas:
+        # Modo comparación: cargar datos de todas las fincas configuradas
+        fincas_con_datos = {}
+        colores = {'PYGANFLOR': '#2196F3', 'URCUQUI': '#FF9800', 'MALCHINGUI': '#4CAF50'}
+        
+        for finca_key, config in FINCAS_CONFIG.items():
+            if config["station_id"] > 0:
+                historico = cargar_historico(finca_key)
+                if historico and len(historico) > 0:
+                    fincas_con_datos[finca_key] = historico
+        
+        if not fincas_con_datos:
+            st.warning("⚠️ No hay datos históricos disponibles para ninguna finca.")
+            return
+        
+        # Crear figura para comparación
+        fig = go.Figure()
+        
+        for finca_key, historico in fincas_con_datos.items():
+            df = pd.DataFrame(historico)
+            df['datetime'] = pd.to_datetime(df['timestamp'])
+            df = df.sort_values('datetime')
+            
+            nombre_finca = FINCAS_CONFIG[finca_key]["nombre"]
+            color = colores.get(finca_key, '#999999')
+            
+            fig.add_trace(go.Scatter(
+                x=df['datetime'],
+                y=df['vpd'],
+                mode='lines+markers',
+                name=nombre_finca,
+                line=dict(color=color, width=3),
+                marker=dict(size=6, color=color),
+                hovertemplate=f'<b>{nombre_finca}</b><br>%{{x|%d/%m/%Y %H:%M}}<br>VPD: %{{y}} kPa<extra></extra>'
+            ))
+        
+        titulo = '📈 Comparación de VPD - Todas las Fincas'
+        
+    else:
+        # Modo individual: solo la finca seleccionada
+        try:
+            historico = cargar_historico(finca_id)
+            
+            if not historico or len(historico) == 0:
+                st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+                return
+            
+            # Convertir a DataFrame
+            df = pd.DataFrame(historico)
+            
+            # Verificar columnas
+            if 'timestamp' not in df.columns:
+                return
+                
+            df['datetime'] = pd.to_datetime(df['timestamp'])
+            df = df.sort_values('datetime')
+        except Exception as e:
+            return
+        
+        # Crear figura
+        fig = go.Figure()
+        
+        # Línea principal de VPD
+        nombre_finca = FINCAS_CONFIG[finca_id]["nombre"]
+        fig.add_trace(go.Scatter(
+            x=df['datetime'],
+            y=df['vpd'],
+            mode='lines+markers',
+            name='VPD',
+            line=dict(color='#2196F3', width=3),
+            marker=dict(size=8, color='#1976D2'),
+            hovertemplate=f'<b>{nombre_finca}</b><br>%{{x|%d/%m/%Y %H:%M}}<br>VPD: %{{y}} kPa<extra></extra>'
+        ))
+        
+        titulo = f'📈 Evolución de VPD - {nombre_finca}'
     
     # Zona ideal (0.4 - 1.2 kPa)
     fig.add_hrect(
@@ -839,12 +928,12 @@ def graficar_evolucion_vpd():
     
     # Configuración del gráfico
     fig.update_layout(
-        title='📈 Evolución de VPD - PYGANFLOR',
+        title=titulo,
         xaxis_title='Fecha y Hora',
         yaxis_title='VPD (kPa)',
         height=500,
         hovermode='x unified',
-        showlegend=False,
+        showlegend=comparar_fincas,
         template='plotly_white',
         xaxis=dict(
             showgrid=True,
@@ -856,22 +945,23 @@ def graficar_evolucion_vpd():
             showgrid=True,
             gridwidth=1,
             gridcolor='lightgray',
-            range=[0, max(df['vpd'].max() + 0.5, 2.0)]
+            range=[0, 2.5]
         )
     )
     
     st.plotly_chart(fig, use_container_width=True)
     
-    # Estadísticas rápidas
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("📊 Total Registros", len(df))
-    with col2:
-        st.metric("📈 VPD Promedio", f"{df['vpd'].mean():.2f} kPa")
-    with col3:
-        st.metric("⬆️ VPD Máximo", f"{df['vpd'].max():.2f} kPa")
-    with col4:
-        st.metric("⬇️ VPD Mínimo", f"{df['vpd'].min():.2f} kPa")
+    # Estadísticas según el modo
+    if not comparar_fincas:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("📊 Total Registros", len(df))
+        with col2:
+            st.metric("📈 VPD Promedio", f"{df['vpd'].mean():.2f} kPa")
+        with col3:
+            st.metric("⬆️ VPD Máximo", f"{df['vpd'].max():.2f} kPa")
+        with col4:
+            st.metric("⬇️ VPD Mínimo", f"{df['vpd'].min():.2f} kPa")
 
 # 🎨 Gráfico psicrométrico de Mollier
 def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
@@ -1112,307 +1202,377 @@ def graficar_psicrometrico(temp_actual, hr_actual, vpd_actual):
             st.error(f"❌ VPD: {vpd_actual} kPa - {estado}")
         
         st.write("🔧 **Solución:** Actualiza Safari o usa Chrome en iPhone")
-    
-    # Interpretación del resultado
-    st.markdown("### 📋 Interpretación del Diagrama Mollier:")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.metric("🌡️ Temperatura", f"{temp_actual:.1f}°C")
-        st.metric("💧 Humedad Relativa", f"{hr_actual}%")
-    
-    with col2:
-        st.metric("💨 Humedad Absoluta", f"{ha_actual:.1f} g/kg")
-        st.metric("📈 VPD", f"{vpd_actual} kPa")
-    
-    if vpd_actual < 0.4:
-        st.warning("🔵 **PYGANFLOR está en zona de VPD muy bajo**: Riesgo de hongos y enfermedades")
-        st.write("💡 **Recomendación**: Aumentar ventilación o reducir humedad")
-    elif 0.4 <= vpd_actual <= 1.2:
-        st.success("🟢 **¡Perfecto! PYGANFLOR está en la zona ideal**: Condiciones óptimas para crecimiento")
-        st.write("✅ **Mantén estas condiciones** para el mejor desarrollo de las plantas")
-    elif 1.2 < vpd_actual <= 2.0:
-        st.warning("🟠 **PYGANFLOR está en zona moderada**: Posible estrés hídrico")
-        st.write("💡 **Recomendación**: Aumentar humedad o reducir temperatura")
-    else:
-        st.error("🔴 **PYGANFLOR está en zona de VPD alto**: Riesgo de cierre estomático")
-        st.write("⚠️ **Acción necesaria**: Aumentar humedad significativamente o reducir temperatura")
 
 # 🖥️ Interfaz Streamlit
 st.set_page_config(page_title="Consulta VPD", page_icon="🌿")
 # 🌿 APLICACIÓN PRINCIPAL
-st.title("🌿 Consulta de VPD PYGANFLOR")
+st.title("🌿 Monitor VPD - Sistema Multi-Finca")
 
-# 📱 DETECCIÓN Y MENSAJE PARA MÓVILES
-st.markdown("""
-<div style="background-color: #28A745; color: white; padding: 10px; border-radius: 5px; text-align: center; margin: 10px 0;">
-    <h3>📱 VPD Monitor PYGANFLOR</h3>
-    <p>Monitoreo en tiempo real para agricultura</p>
-</div>
-""", unsafe_allow_html=True)
+# Panel destacado para selección de finca
+st.markdown("---")
 
-# 🔧 PRUEBA DE VISIBILIDAD PARA MÓVILES
-st.success("✅ Si ves este mensaje, la app está cargando correctamente")
-st.info("📱 Optimizado para dispositivos móviles")
+fincas_disponibles = {k: v["nombre"] for k, v in FINCAS_CONFIG.items() if v["station_id"] > 0}
 
-# 📱 Debug para iPhone - mostrar información del navegador
-if st.sidebar.checkbox("🔧 Debug Móvil", help="Activar si tienes problemas en móvil"):
-    st.sidebar.write("**Info del navegador:**")
-    st.sidebar.success("✅ App cargada correctamente")
-    st.sidebar.info("💡 Si ves esto, la conexión funciona")
-    st.sidebar.write("🔄 Actualizando datos...")
+if len(fincas_disponibles) == 0:
+    st.error("❌ No hay fincas configuradas. Verifica el archivo .env")
+    st.stop()
 
-st.title("🌿 Monitor VPD PYGANFLOR")
+col_selector1, col_selector2 = st.columns([1, 2])
 
-# 🔄 Auto-refresco cada 15 minutos
-import time as time_module
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = time_module.time()
+with col_selector1:
+    finca_seleccionada = st.selectbox(
+        "📍 Selecciona la finca a monitorear:",
+        options=list(fincas_disponibles.keys()),
+        format_func=lambda x: fincas_disponibles[x],
+        key="selector_finca"
+    )
 
-# Calcular tiempo desde último refresco
-tiempo_transcurrido = time_module.time() - st.session_state.last_refresh
-if tiempo_transcurrido >= 900:  # 900 segundos = 15 minutos
-    st.session_state.last_refresh = time_module.time()
-    st.rerun()
+# Obtener configuración de la finca seleccionada
+config_finca = FINCAS_CONFIG[finca_seleccionada]
+API_KEY = config_finca["api_key"]
+API_SECRET = config_finca["api_secret"]
+STATION_ID = config_finca["station_id"]
 
-# Mostrar contador de próximo refresco
-minutos_restantes = int((900 - tiempo_transcurrido) / 60)
-segundos_restantes = int((900 - tiempo_transcurrido) % 60)
-st.sidebar.info(f"🔄 Próximo refresco en: {minutos_restantes}:{segundos_restantes:02d}")
+with col_selector2:
+    with st.expander("📊 Ver Resumen Fincas", expanded=False):
+        mostrar_resumen_fincas()
 
-# 🔄 CREAR TABS PARA SEPARAR CONTENIDO
-tab1, tab2, tab3 = st.tabs(["📊 Datos Actuales", "📈 Gráfica Histórica", "📋 Tabla de Datos"])
+st.info("👆 Selecciona una finca y presiona **'🚀 Cargar Dashboard'** para ver los datos en tiempo real.")
 
-# ===== TAB 1: DATOS ACTUALES =====
-with tab1:
-    # Validar credenciales en el sidebar
-    validar_credenciales()
+# Botón para cargar datos
+cargar_datos = st.button("🚀 Cargar Dashboard", type="primary", use_container_width=True)
 
-    # Información inicial
-    st.markdown("""
-    ## 📊 Calculadora de Déficit de Presión de Vapor (VPD)
+st.markdown("---")
 
-    Esta aplicación obtiene datos en tiempo real de tu estación meteorológica WeatherLink ubicada en la zona 1 de PYGANFLOR
-    y calcula el VPD, un parámetro crucial para optimizar el crecimiento de las plantas.
+# Solo mostrar datos si se ha presionado el botón o si ya estaba en session_state
+if 'mostrar_datos' not in st.session_state:
+    st.session_state.mostrar_datos = False
 
-    ### 🎯 Rangos de VPD:
-    - 🔵 **Muy bajo (< 0.4 kPa)**: Riesgo de hongos
-    - 🟢 **Ideal (0.4 - 1.2 kPa)**: Óptimo para crecimiento
-    - 🟠 **Moderado (1.2 - 2.0 kPa)**: Posible estrés hídrico
-- 🔴 **Alto (> 2.0 kPa)**: Riesgo de cierre estomático
+if cargar_datos:
+    st.session_state.mostrar_datos = True
+    st.session_state.finca_actual = finca_seleccionada
+    # Inicializar el temporizador de auto-refresh
+    st.session_state.last_refresh = time.time()
 
----
-""")
+# Verificar si cambió la finca seleccionada
+if 'finca_actual' in st.session_state and st.session_state.finca_actual != finca_seleccionada:
+    st.session_state.mostrar_datos = False
 
-# 🔄 OBTENER DATOS AUTOMÁTICAMENTE (siempre que se carga la página)
-colombia_tz = timezone(timedelta(hours=-5))
-hora_actual = datetime.now(colombia_tz).strftime("%d/%m/%Y %H:%M:%S")
+# 🔄 Auto-refresh cada 15 minutos (900 segundos)
+if st.session_state.mostrar_datos:
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = time.time()
+    
+    tiempo_transcurrido = time.time() - st.session_state.last_refresh
+    
+    # Si han pasado 15 minutos, refrescar automáticamente
+    if tiempo_transcurrido >= 900:  # 900 segundos = 15 minutos
+        st.session_state.last_refresh = time.time()
+        st.rerun()
 
-with st.spinner("🔄 Obteniendo datos de la estación..."):
-    temp, hr = obtener_datos_estacion()
-
-if temp is not None and hr is not None:
-        vpd = calcular_vpd(temp, hr)
-        rango = clasificar_vpd(vpd)
-
-        st.success("✅ Datos obtenidos correctamente")
-        
-        # 🕐 Mostrar hora de forma más clara
-        st.markdown(f"""
-        <div style="background-color: #E3F2FD; border: 2px solid #2196F3; border-radius: 10px; padding: 15px; text-align: center; margin: 15px 0;">
-            <h4 style="color: #000000; margin: 0;">🕐 Última actualización</h4>
-            <h3 style="color: #000000; margin: 10px 0;">{hora_actual}</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # 📱 MOSTRAR DATOS BÁSICOS PRIMERO (SIEMPRE VISIBLE EN MÓVIL)
-        st.markdown("""
-        <div style="background-color: #F8F9FA; border: 3px solid #28A745; border-radius: 15px; padding: 20px; margin: 20px 0;">
-            <h3 style="color: #000000; text-align: center;">📊 DATOS ACTUALES PYGANFLOR</h3>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Mostrar métricas con estilo forzado para móvil
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.markdown(f"""
-            <div style="background-color: #E3F2FD; border: 2px solid #2196F3; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
-                <h4 style="color: #000000; margin: 0;">🌡️ Temperatura</h4>
-                <h2 style="color: #000000; margin: 10px 0;">{temp:.1f}°C</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        with col2:
-            st.markdown(f"""
-            <div style="background-color: #E8F5E8; border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
-                <h4 style="color: #000000; margin: 0;">💧 Humedad</h4>
-                <h2 style="color: #000000; margin: 10px 0;">{hr}%</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        with col3:
-            # Color según VPD
-            if "IDEAL" in rango:
-                color_bg = "#E8F5E8"
-                color_border = "#4CAF50"
-                icon = "✅"
-            elif "BAJO" in rango:
-                color_bg = "#FFF3E0"
-                color_border = "#FF9800"
-                icon = "⚠️"
-            else:
-                color_bg = "#FFEBEE"
-                color_border = "#F44336"
-                icon = "❌"
-                
-            st.markdown(f"""
-            <div style="background-color: {color_bg}; border: 2px solid {color_border}; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
-                <h4 style="color: #000000; margin: 0;">{icon} VPD</h4>
-                <h2 style="color: #000000; margin: 10px 0;">{vpd} kPa</h2>
-                <p style="color: #000000; margin: 0; font-weight: bold;">{rango}</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Mostrar métricas también con el sistema normal (fallback)
-        st.write("---")
-        col1b, col2b, col3b = st.columns(3)
-        with col1b:
-            st.metric("🌡️ Temperatura", f"{temp:.1f}°C")
-        with col2b:
-            st.metric("💧 Humedad Relativa", f"{hr}%")
-        with col3b:
-            st.metric("📈 VPD", f"{vpd} kPa")
-        
-        st.info(f"📋 **Estado**: {rango}")
-        
-        # 💾 Guardar en histórico si han pasado 15 minutos
-        if debe_guardar_lectura():
-            with st.spinner("💾 Guardando lectura automática..."):
-                resultado = agregar_lectura_historico(temp, hr, vpd)
-                if resultado:
-                    st.success("✅ Lectura guardada exitosamente en Supabase")
-                else:
-                    st.error("❌ No se pudo guardar la lectura en Supabase")
-        else:
-            ultimo = obtener_ultimo_registro_tiempo()
-            if ultimo:
-                colombia_tz = timezone(timedelta(hours=-5))
-                siguiente = ultimo + timedelta(minutes=15)
-                st.info(f"⏱️ Próxima lectura automática: {siguiente.strftime('%H:%M:%S')}")
-
-        # Diagrama Mollier y resumen
-        st.write("---")
-        mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
-        
-        if mostrar_grafico:
-            st.write("📊 **Diagrama Psicrométrico de Mollier**")
-            graficar_psicrometrico(temp, hr, vpd)
-        
-        # Tabla con datos de la lectura actual
-        st.subheader("📈 Resumen de la lectura")
-        data = {
-            'Parámetro': ['Temperatura', 'Humedad Relativa', 'VPD'],
-            'Valor': [f"{temp:.1f}°C", f"{hr}%", f"{vpd} kPa"],
-            'Estado': ['Normal', 'Normal', rango.split(' ', 1)[1]]
-        }
-        df = pd.DataFrame(data)
-        st.table(df)
-else:
-    st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
-
-# ===== TAB 2: GRÁFICA HISTÓRICA =====
-with tab2:
-    st.header("📈 Evolución de VPD en el Tiempo")
-    graficar_evolucion_vpd()
-
-# ===== TAB 3: TABLA DE DATOS =====
-with tab3:
-    st.header("📋 Tabla de Datos Históricos")
-    try:
-        historico = cargar_historico()
-        
-        if not historico or len(historico) == 0:
-            st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
-        else:
-            st.info(f"📊 Cargados {len(historico)} registros desde Supabase")
-            
-            # Convertir a DataFrame
-            df_historico = pd.DataFrame(historico)
-            
-            # Traducir días de la semana
-            dias_es = {
-                'Monday': 'Lunes',
-                'Tuesday': 'Martes',
-                'Wednesday': 'Miércoles',
-                'Thursday': 'Jueves',
-                'Friday': 'Viernes',
-                'Saturday': 'Sábado',
-                'Sunday': 'Domingo'
-            }
-            df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
-            
-            # Seleccionar y ordenar columnas
-            df_mostrar = df_historico[['dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
-            df_mostrar.columns = ['Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
-            df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
-            
-            # Mostrar tabla con formato
-            st.dataframe(
-                df_mostrar,
-                use_container_width=True,
-                height=400
-            )
-            
-            # Botones de descarga
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                # Botón para descargar CSV
-                csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
-                st.download_button(
-                    label="📥 Descargar CSV",
-                    data=csv,
-                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
-            
-            with col_btn2:
-                # Botón para descargar Excel
-                from io import BytesIO
-                buffer = BytesIO()
-                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                    df_mostrar.to_excel(writer, index=False, sheet_name='VPD Histórico')
-                buffer.seek(0)
-                
-                st.download_button(
-                    label="📊 Descargar Excel",
-                    data=buffer,
-                    file_name=f"vpd_historico_pyganflor_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True
-                )
-            
-            # Información adicional
-            st.info(f"📊 Total de registros: {len(df_mostrar)} | 📅 Últimos 7 días")
-    except Exception as e:
-        st.error(f"❌ Error al mostrar tabla: {str(e)}")
-        st.info("💡 Si estás usando Supabase, verifica que la tabla 'vpd_historico' exista.")
-
-# Sidebar con información adicional
-st.sidebar.markdown("""
-### 🔧 Información de la estación
-- **ID de estación**: 167591
-- **Ubicación**: Configurada en WeatherLink
-- **Última actualización**: Tiempo real
+# Mostrar información solo si se activó el botón
+if st.session_state.mostrar_datos:
+    # Info box con datos de la finca
+    st.success(f"✅ **Monitoreando**: {config_finca['nombre']} | 🔄 Actualización automática cada 15 minutos")
+    st.markdown("---")
+    
+    # SIDEBAR con información adicional
+    st.sidebar.title("ℹ️ Información")
+    st.sidebar.markdown(f"""
+### 🔧 Estación Activa
+- **Finca**: {config_finca["nombre"]}
+- **ID de estación**: {STATION_ID}
 
 ### 📚 Sobre VPD
 El Déficit de Presión de Vapor es la diferencia entre 
 la presión de vapor saturado y la presión de vapor real 
 del aire a una temperatura dada.
 
-### 🌱 Aplicaciones
-- Control de invernaderos
-- Optimización de riego
-- Prevención de enfermedades
-- Maximización del rendimiento
+### 🎯 Rangos Óptimos
+- 🔵 < 0.4 kPa: Muy bajo
+- 🟢 0.4 - 1.2 kPa: Ideal
+- 🟠 1.2 - 2.0 kPa: Moderado
+- 🔴 > 2.0 kPa: Alto
 """)
+
+    # 🔄 CREAR TABS PARA SEPARAR CONTENIDO
+    tab1, tab2, tab3 = st.tabs(["📊 Datos Actuales", "📈 Gráfica Histórica", "📋 Tabla de Datos"])
+
+    # ===== TAB 1: DATOS ACTUALES =====
+    with tab1:
+        # Validar credenciales en el sidebar
+        validar_credenciales()
+
+        # Información inicial
+        st.markdown("""
+        ## 📊 Calculadora de Déficit de Presión de Vapor (VPD)
+
+        ### 🎯 Rangos de VPD:
+        - 🔵 **Muy bajo (< 0.4 kPa)**: Riesgo de hongos
+        - 🟢 **Ideal (0.4 - 1.2 kPa)**: Óptimo para crecimiento
+        - 🟠 **Moderado (1.2 - 2.0 kPa)**: Posible estrés hídrico
+        - 🔴 **Alto (> 2.0 kPa)**: Riesgo de cierre estomático
+
+        ---
+        """)
+
+        # 🔄 OBTENER DATOS AUTOMÁTICAMENTE (siempre que se carga la página)
+        colombia_tz = timezone(timedelta(hours=-5))
+        hora_actual = datetime.now(colombia_tz).strftime("%d/%m/%Y %H:%M:%S")
+
+        with st.spinner("🔄 Obteniendo datos de la estación..."):
+            temp, hr = obtener_datos_estacion(STATION_ID, API_KEY, API_SECRET)
+
+        if temp is not None and hr is not None:
+            vpd = calcular_vpd(temp, hr)
+            rango = clasificar_vpd(vpd)
+
+            st.success("✅ Datos obtenidos correctamente")
+            
+            # 🕐 Mostrar hora de forma más clara
+            st.markdown(f"""
+            <div style="background-color: #E3F2FD; border: 2px solid #2196F3; border-radius: 10px; padding: 15px; text-align: center; margin: 15px 0;">
+                <h4 style="color: #000000; margin: 0;">🕐 Última actualización</h4>
+                <h3 style="color: #000000; margin: 10px 0;">{hora_actual}</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 📱 MOSTRAR DATOS BÁSICOS PRIMERO (SIEMPRE VISIBLE EN MÓVIL)
+            st.markdown(f"""
+            <div style="background-color: #F8F9FA; border: 3px solid #28A745; border-radius: 15px; padding: 20px; margin: 20px 0;">
+                <h3 style="color: #000000; text-align: center;">📊 DATOS ACTUALES {config_finca['nombre'].upper()}</h3>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Mostrar métricas con estilo forzado para móvil
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown(f"""
+                <div style="background-color: #E3F2FD; border: 2px solid #2196F3; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
+                    <h4 style="color: #000000; margin: 0;">🌡️ Temperatura</h4>
+                    <h2 style="color: #000000; margin: 10px 0;">{temp:.1f}°C</h2>
+                </div>
+                """, unsafe_allow_html=True)
+            with col2:
+                st.markdown(f"""
+                <div style="background-color: #E8F5E8; border: 2px solid #4CAF50; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
+                    <h4 style="color: #000000; margin: 0;">💧 Humedad</h4>
+                    <h2 style="color: #000000; margin: 10px 0;">{hr}%</h2>
+                </div>
+                """, unsafe_allow_html=True)
+            with col3:
+                # Color según VPD: Verde si está en rango ideal, Rojo si no
+                if "Ideal" in rango or "ideal" in rango.lower():
+                    color_bg = "#E8F5E8"
+                    color_border = "#4CAF50"
+                    icon = "✅"
+                else:
+                    color_bg = "#FFEBEE"
+                    color_border = "#F44336"
+                    icon = "❌"
+                    
+                st.markdown(f"""
+                <div style="background-color: {color_bg}; border: 2px solid {color_border}; border-radius: 10px; padding: 15px; text-align: center; margin: 10px 0;">
+                    <h4 style="color: #000000; margin: 0;">{icon} VPD</h4>
+                    <h2 style="color: #000000; margin: 10px 0;">{vpd} kPa</h2>
+                    <p style="color: #000000; margin: 0; font-weight: bold;">{rango}</p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Mostrar métricas también con el sistema normal (fallback)
+            st.write("---")
+            col1b, col2b, col3b = st.columns(3)
+            with col1b:
+                st.metric("🌡️ Temperatura", f"{temp:.1f}°C")
+            with col2b:
+                st.metric("💧 Humedad Relativa", f"{hr}%")
+            with col3b:
+                st.metric("📈 VPD", f"{vpd} kPa")
+            
+            st.info(f"📋 **Estado**: {rango}")
+            
+            # 💾 Guardar en histórico si han pasado 15 minutos
+            if debe_guardar_lectura(finca_seleccionada):
+                with st.spinner("💾 Guardando lectura automática..."):
+                    resultado = agregar_lectura_historico(temp, hr, vpd, finca_seleccionada)
+                if resultado:
+                    st.success("✅ Lectura guardada exitosamente en Supabase")
+                else:
+                    st.error("❌ No se pudo guardar la lectura en Supabase")
+        else:
+            ultimo = obtener_ultimo_registro_tiempo(finca_seleccionada)
+            if ultimo:
+                colombia_tz = timezone(timedelta(hours=-5))
+                siguiente = ultimo + timedelta(minutes=15)
+                st.info(f"⏱️ Próxima lectura automática: {siguiente.strftime('%H:%M:%S')}")
+
+        # Diagrama Mollier
+        st.write("---")
+        mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
+        
+        if mostrar_grafico:
+            st.write("📊 **Diagrama Psicrométrico de Mollier**")
+            graficar_psicrometrico(temp, hr, vpd)
+        else:
+            st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
+
+    # ===== TAB 2: GRÁFICA HISTÓRICA =====
+    with tab2:
+        st.header("📈 Evolución de VPD en el Tiempo")
+        
+        # Opciones de visualización
+        col_modo1, col_modo2 = st.columns(2)
+        with col_modo1:
+            modo_comparacion = st.checkbox("🔄 Comparar todas las fincas", value=False, help="Muestra las líneas de VPD de todas las fincas en un solo gráfico")
+        
+        if modo_comparacion:
+            graficar_evolucion_vpd(finca_seleccionada, comparar_fincas=True)
+        else:
+            with col_modo2:
+                finca_para_grafico = st.selectbox(
+                    "Selecciona finca para el gráfico:",
+                    options=list(fincas_disponibles.keys()),
+                    format_func=lambda x: fincas_disponibles[x],
+                    key="selector_finca_grafico",
+                    index=list(fincas_disponibles.keys()).index(finca_seleccionada)
+                )
+            graficar_evolucion_vpd(finca_para_grafico, comparar_fincas=False)
+
+    # ===== TAB 3: TABLA DE DATOS =====
+    with tab3:
+        st.header("📋 Tabla de Datos Históricos")
+        try:
+            historico = cargar_historico(finca_seleccionada)
+            
+            if not historico or len(historico) == 0:
+                st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+            else:
+                
+                # Convertir a DataFrame
+                df_historico = pd.DataFrame(historico)
+            
+                # Traducir días de la semana
+                dias_es = {
+                    'Monday': 'Lunes',
+                    'Tuesday': 'Martes',
+                    'Wednesday': 'Miércoles',
+                    'Thursday': 'Jueves',
+                    'Friday': 'Viernes',
+                    'Saturday': 'Sábado',
+                    'Sunday': 'Domingo'
+                }
+                df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
+                
+                # Seleccionar y ordenar columnas (incluir finca)
+                df_mostrar = df_historico[['finca', 'dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
+                df_mostrar.columns = ['Finca', 'Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
+                df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
+                
+                # Mostrar tabla con formato
+                st.dataframe(
+                    df_mostrar,
+                    use_container_width=True,
+                    height=400
+                )
+                
+                # Botones de descarga
+                col_btn1, col_btn2 = st.columns(2)
+                
+                with col_btn1:
+                    # Botón para descargar CSV
+                    csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
+                    st.download_button(
+                        label="📥 Descargar CSV",
+                        data=csv,
+                        file_name=f"vpd_historico_{finca_seleccionada.lower()}_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                with col_btn2:
+                    # Botón para descargar Excel
+                    from io import BytesIO
+                    buffer = BytesIO()
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        df_mostrar.to_excel(writer, index=False, sheet_name='VPD Histórico')
+                    buffer.seek(0)
+                    
+                    st.download_button(
+                        label="📊 Descargar Excel",
+                        data=buffer,
+                        file_name=f"vpd_historico_{finca_seleccionada.lower()}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+                    
+        except Exception as e:
+            st.error(f"❌ Error al mostrar tabla: {str(e)}")
+
+# 🔄 Función de guardado automático para todas las fincas (ejecutada por APScheduler)
+def guardar_datos_automatico():
+    """Función que se ejecuta cada 15 minutos para guardar datos de todas las fincas"""
+    try:
+        colombia_tz = timezone(timedelta(hours=-5))
+        ahora = datetime.now(colombia_tz)
+        print(f"\n{'='*60}")
+        print(f"🔄 Guardado automático iniciado: {ahora.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*60}")
+        
+        for finca_id, config in FINCAS_CONFIG.items():
+            if config["station_id"] > 0:
+                try:
+                    print(f"\n📍 Procesando finca: {config['nombre']}...")
+                    
+                    # Obtener datos de la estación
+                    temp, hr = obtener_datos_estacion(
+                        config["station_id"], 
+                        config["api_key"], 
+                        config["api_secret"]
+                    )
+                    
+                    if temp is not None and hr is not None:
+                        # Calcular VPD
+                        vpd = calcular_vpd(temp, hr)
+                        
+                        # Crear registro
+                        nuevo_registro = {
+                            "timestamp": ahora.isoformat(),
+                            "fecha": ahora.strftime("%Y-%m-%d"),
+                            "hora": ahora.strftime("%H:%M:%S"),
+                            "dia_semana": ahora.strftime("%A"),
+                            "temperatura": temp,
+                            "humedad": hr,
+                            "vpd": vpd
+                        }
+                        
+                        # Guardar en Supabase
+                        resultado = guardar_registro_supabase(nuevo_registro, finca_id)
+                        
+                        if resultado:
+                            print(f"   ✅ Datos guardados: T={temp:.1f}°C, HR={hr}%, VPD={vpd} kPa")
+                        else:
+                            print(f"   ⚠️ No se pudo guardar en Supabase")
+                    else:
+                        print(f"   ❌ No se pudieron obtener datos de la estación")
+                        
+                except Exception as e:
+                    print(f"   ❌ Error procesando {config['nombre']}: {str(e)}")
+        
+        print(f"\n{'='*60}")
+        print(f"✅ Guardado automático completado")
+        print(f"{'='*60}\n")
+        
+    except Exception as e:
+        print(f"\n❌ Error en guardado automático: {str(e)}\n")
+
+# 🚀 Inicializar scheduler de tareas en segundo plano
+if 'scheduler_started' not in st.session_state:
+    st.session_state.scheduler_started = True
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=guardar_datos_automatico, trigger="interval", minutes=15)
+    scheduler.start()
+    
+    # Asegurar que el scheduler se detenga al cerrar la app
+    atexit.register(lambda: scheduler.shutdown())
+    
+    print("🚀 Scheduler iniciado: Guardado automático cada 15 minutos")
