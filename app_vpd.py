@@ -1399,22 +1399,22 @@ del aire a una temperatura dada.
                     st.success("✅ Lectura guardada exitosamente en Supabase")
                 else:
                     st.error("❌ No se pudo guardar la lectura en Supabase")
-        else:
-            ultimo = obtener_ultimo_registro_tiempo(finca_seleccionada)
-            if ultimo:
-                colombia_tz = timezone(timedelta(hours=-5))
-                siguiente = ultimo + timedelta(minutes=15)
-                st.info(f"⏱️ Próxima lectura automática: {siguiente.strftime('%H:%M:%S')}")
+            else:
+                ultimo = obtener_ultimo_registro_tiempo(finca_seleccionada)
+                if ultimo:
+                    colombia_tz = timezone(timedelta(hours=-5))
+                    siguiente = ultimo + timedelta(minutes=15)
+                    st.info(f"⏱️ Próxima lectura automática: {siguiente.strftime('%H:%M:%S')}")
 
-        # Diagrama Mollier
-        st.write("---")
-        mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
-        
-        if mostrar_grafico:
-            st.write("📊 **Diagrama Psicrométrico de Mollier**")
-            graficar_psicrometrico(temp, hr, vpd)
-    else:
-        st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
+            # Diagrama Mollier
+            st.write("---")
+            mostrar_grafico = st.checkbox("📊 Mostrar Diagrama Mollier", value=True, help="Desactiva si tienes problemas en móvil")
+            
+            if mostrar_grafico:
+                st.write("📊 **Diagrama Psicrométrico de Mollier**")
+                graficar_psicrometrico(temp, hr, vpd)
+        else:
+            st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
 
     # ===== TAB 2: GRÁFICA HISTÓRICA =====
     with tab2:
