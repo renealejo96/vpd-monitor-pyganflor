@@ -158,9 +158,9 @@ st.markdown("""
 FINCAS_CONFIG = {
     "PYGANFLOR": {
         "nombre": "Pyganflor",
-        "api_key": os.getenv("FINCA1_API_KEY", "ljhgrfizwlad3hose74hycpa0jn1t4rz"),
-        "api_secret": os.getenv("FINCA1_API_SECRET", "t9yutftlg7eddypqv9kocdpmtu9mwyhy"),
-        "station_id": int(os.getenv("FINCA1_STATION_ID", "167591")),
+        "api_key": os.getenv("FINCA1_API_KEY", ""),
+        "api_secret": os.getenv("FINCA1_API_SECRET", ""),
+        "station_id": int(os.getenv("FINCA1_STATION_ID", "0")),
     },
     "URCUQUI": {
         "nombre": "Florsani Urcuquí",

@@ -58,18 +58,18 @@ nano .env
 **Contenido requerido:**
 ```env
 # FINCA 1 - PYGANFLOR
-FINCA1_API_KEY=ljhgrfizwlad3hose74hycpa0jn1t4rz
-FINCA1_API_SECRET=t9yutftlg7eddypqv9kocdpmtu9mwyhy
+FINCA1_API_KEY=tu_api_key_finca1
+FINCA1_API_SECRET=tu_api_secret_finca1
 FINCA1_STATION_ID=167591
 
 # FINCA 2 - URCUQUÍ
-FINCA2_API_KEY=hrd0nyzmwv5esftiktab7nsgazmi6zp8
-FINCA2_API_SECRET=m5jyv0unsyzktbxdt1xnm9dqw4q4pwktI
+FINCA2_API_KEY=tu_api_key_finca2
+FINCA2_API_SECRET=tu_api_secret_finca2
 FINCA2_STATION_ID=209314
 
 # FINCA 3 - MALCHINGUÍ
-FINCA3_API_KEY=mczqougmw56ggwopbodwsvy20oyn38sh
-FINCA3_API_SECRET=frvgyvxki0vel9vbkeydnnvbhixyt5ji
+FINCA3_API_KEY=tu_api_key_finca3
+FINCA3_API_SECRET=tu_api_secret_finca3
 FINCA3_STATION_ID=219603
 
 # SUPABASE

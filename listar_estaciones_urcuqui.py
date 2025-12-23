@@ -1,8 +1,12 @@
 import requests
+import os
+from dotenv import load_dotenv
 
-# REEMPLAZA CON LAS CREDENCIALES DE LA CUENTA DE URCUQUÍ
-API_KEY = "hrd0nyzmwv5esftiktab7nsgazmi6zp8"
-API_SECRET = "m5jyv0unsyzktbxdt1xnm9dqw4q4pwktI"
+load_dotenv()
+
+# Usar las credenciales de la Finca 2 (Urcuquí)
+API_KEY = os.getenv("FINCA2_API_KEY")
+API_SECRET = os.getenv("FINCA2_API_SECRET")
 
 print("Buscando estaciones en la cuenta de Urcuqui...\n")
 

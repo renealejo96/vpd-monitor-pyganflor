@@ -1,8 +1,12 @@
 import requests
+import os
+from dotenv import load_dotenv
 
-# Credenciales de Malchinguí
-API_KEY = "mczqougmw56ggwopbodwsvy20oyn38sh"
-API_SECRET = "frvgyvxki0vel9vbkeydnnvbhixyt5ji"
+load_dotenv()
+
+# Usar las credenciales de la Finca 3 (Malchinguí)
+API_KEY = os.getenv("FINCA3_API_KEY")
+API_SECRET = os.getenv("FINCA3_API_SECRET")
 
 print("🔍 Buscando todas las estaciones en Malchinguí...\n")
 
