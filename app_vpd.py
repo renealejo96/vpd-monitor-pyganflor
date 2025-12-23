@@ -1413,8 +1413,8 @@ del aire a una temperatura dada.
         if mostrar_grafico:
             st.write("📊 **Diagrama Psicrométrico de Mollier**")
             graficar_psicrometrico(temp, hr, vpd)
-        else:
-            st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
+    else:
+        st.error("❌ No se pudieron obtener los datos. Verifica la conexión a internet y las credenciales de la API.")
 
     # ===== TAB 2: GRÁFICA HISTÓRICA =====
     with tab2:
