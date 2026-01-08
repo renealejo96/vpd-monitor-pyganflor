@@ -43,22 +43,22 @@ st.set_page_config(
     }
 )
 
-# 🎨 CSS personalizado para mejor compatibilidad móvil
+# 🎨 CSS personalizado para mejor compatibilidad móvil y diseño mejorado
 st.markdown("""
 <style>
     /* FORZAR TEMA CLARO COMPLETO */
     .stApp {
-        background-color: #FFFFFF !important;
+        background-color: #F5F7FA !important;
         color: #000000 !important;
     }
     
     .main {
-        background-color: #FFFFFF !important;
+        background-color: #F5F7FA !important;
         color: #000000 !important;
     }
     
     .block-container {
-        background-color: #FFFFFF !important;
+        background-color: #F5F7FA !important;
         color: #000000 !important;
         padding-top: 1rem !important;
     }
@@ -81,30 +81,55 @@ st.markdown("""
     
     /* MÉTRICAS VISIBLES */
     .metric-container {
-        background-color: #F8F9FA !important;
+        background-color: #FFFFFF !important;
         border: 2px solid #28A745 !important;
-        border-radius: 10px !important;
-        padding: 15px !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
         margin: 10px 0 !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
     }
     
     .stMetric {
-        background-color: #F8F9FA !important;
-        border: 2px solid #DEE2E6 !important;
-        border-radius: 8px !important;
-        padding: 10px !important;
+        background-color: #FFFFFF !important;
+        border: 2px solid #E3E8EF !important;
+        border-radius: 12px !important;
+        padding: 15px !important;
         color: #000000 !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
     }
     
     .stMetric label {
-        color: #000000 !important;
-        font-weight: bold !important;
+        color: #1F2937 !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
     }
     
     .stMetric [data-testid="metric-value"] {
-        color: #000000 !important;
-        font-size: 24px !important;
-        font-weight: bold !important;
+        color: #111827 !important;
+        font-size: 28px !important;
+        font-weight: 700 !important;
+    }
+    
+    /* TARJETAS PERSONALIZADAS */
+    .info-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border-radius: 12px !important;
+        padding: 20px !important;
+        color: white !important;
+        margin: 10px 0 !important;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4) !important;
+    }
+    
+    /* BOTONES MEJORADOS */
+    .stButton > button {
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
     }
     
     /* SIDEBAR VISIBLE */
@@ -219,15 +244,37 @@ def obtener_cliente_supabase():
     except Exception as e:
         return None
 
-def cargar_historico_supabase(finca_id):
-    """Carga histórico desde Supabase filtrado por finca"""
+def cargar_historico_supabase(finca_id, fecha_inicio=None, fecha_fin=None, limite=None):
+    """Carga histórico desde Supabase filtrado por finca y rango de fechas
+    
+    Args:
+        finca_id: ID de la finca
+        fecha_inicio: Fecha inicio del rango (formato YYYY-MM-DD) - opcional
+        fecha_fin: Fecha fin del rango (formato YYYY-MM-DD) - opcional
+        limite: Número máximo de registros a retornar - opcional
+    """
     try:
         client = obtener_cliente_supabase()
         if not client:
             return []
         
-        # Obtener últimos 7 días de registros de la finca seleccionada
-        response = client.table('vpd_historico').select('*').eq('finca', finca_id).order('id', desc=True).limit(672).execute()
+        # Construir query base
+        query = client.table('vpd_historico').select('*').eq('finca', finca_id)
+        
+        # Aplicar filtros de fecha si existen
+        if fecha_inicio:
+            query = query.gte('fecha', fecha_inicio)
+        if fecha_fin:
+            query = query.lte('fecha', fecha_fin)
+        
+        # Ordenar por fecha descendente
+        query = query.order('timestamp', desc=True)
+        
+        # Aplicar límite si existe
+        if limite:
+            query = query.limit(limite)
+        
+        response = query.execute()
         
         if not response.data:
             return []
@@ -236,7 +283,7 @@ def cargar_historico_supabase(finca_id):
         datos = []
         for registro in response.data:
             datos.append({
-                'finca': str(registro.get('finca', finca_id)),  # Incluir campo finca
+                'finca': str(registro.get('finca', finca_id)),
                 'timestamp': str(registro['timestamp']),
                 'fecha': str(registro['fecha']),
                 'hora': str(registro['hora']),
@@ -370,11 +417,18 @@ def guardar_historico_json(datos):
         return False
 
 # 🔄 Funciones híbridas (Auto-detectan producción/desarrollo)
-def cargar_historico(finca_id):
-    """Carga histórico desde Supabase/Google Sheets (producción) o JSON (local)"""
+def cargar_historico(finca_id, fecha_inicio=None, fecha_fin=None, limite=None):
+    """Carga histórico desde Supabase/Google Sheets (producción) o JSON (local)
+    
+    Args:
+        finca_id: ID de la finca
+        fecha_inicio: Fecha inicio del rango (formato YYYY-MM-DD) - opcional
+        fecha_fin: Fecha fin del rango (formato YYYY-MM-DD) - opcional
+        limite: Número máximo de registros - opcional
+    """
     env = esta_en_produccion()
     if env == "supabase":
-        return cargar_historico_supabase(finca_id)
+        return cargar_historico_supabase(finca_id, fecha_inicio, fecha_fin, limite)
     elif env == "gsheets":
         return cargar_historico_gsheets()
     else:
@@ -834,8 +888,15 @@ def mostrar_resumen_fincas():
         st.warning("No hay fincas configuradas para mostrar")
 
 # �📈 Gráfico de líneas - Evolución VPD por hora
-def graficar_evolucion_vpd(finca_id, comparar_fincas=False):
-    """Genera gráfico de líneas mostrando la evolución del VPD en el tiempo"""
+def graficar_evolucion_vpd(finca_id, comparar_fincas=False, fecha_inicio=None, fecha_fin=None):
+    """Genera gráfico de líneas mostrando la evolución del VPD en el tiempo
+    
+    Args:
+        finca_id: ID de la finca
+        comparar_fincas: Si True, compara todas las fincas
+        fecha_inicio: Fecha inicio del rango (formato YYYY-MM-DD)
+        fecha_fin: Fecha fin del rango (formato YYYY-MM-DD)
+    """
     
     if comparar_fincas:
         # Modo comparación: cargar datos de todas las fincas configuradas
@@ -844,7 +905,7 @@ def graficar_evolucion_vpd(finca_id, comparar_fincas=False):
         
         for finca_key, config in FINCAS_CONFIG.items():
             if config["station_id"] > 0:
-                historico = cargar_historico(finca_key)
+                historico = cargar_historico(finca_key, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
                 if historico and len(historico) > 0:
                     fincas_con_datos[finca_key] = historico
         
@@ -878,10 +939,10 @@ def graficar_evolucion_vpd(finca_id, comparar_fincas=False):
     else:
         # Modo individual: solo la finca seleccionada
         try:
-            historico = cargar_historico(finca_id)
+            historico = cargar_historico(finca_id, fecha_inicio=fecha_inicio, fecha_fin=fecha_fin)
             
             if not historico or len(historico) == 0:
-                st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+                st.warning("⚠️ No hay datos históricos disponibles para el rango de fechas seleccionado.")
                 return
             
             # Convertir a DataFrame
@@ -1420,13 +1481,53 @@ del aire a una temperatura dada.
     with tab2:
         st.header("📈 Evolución de VPD en el Tiempo")
         
-        # Opciones de visualización
+        # Sección de filtros con diseño mejorado
+        with st.expander("🔍 Filtros y Opciones de Visualización", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                # Rango de fechas predefinido
+                rango_predefinido = st.selectbox(
+                    "Rango rápido:",
+                    options=["Últimas 24 horas", "Últimos 7 días", "Últimos 30 días", "Personalizado"],
+                    index=1,
+                    key="rango_grafico"
+                )
+            
+            # Calcular fechas según selección
+            hoy = datetime.now(timezone(timedelta(hours=-5)))
+            if rango_predefinido == "Últimas 24 horas":
+                fecha_inicio_grafico = (hoy - timedelta(days=1)).date()
+                fecha_fin_grafico = hoy.date()
+            elif rango_predefinido == "Últimos 7 días":
+                fecha_inicio_grafico = (hoy - timedelta(days=7)).date()
+                fecha_fin_grafico = hoy.date()
+            elif rango_predefinido == "Últimos 30 días":
+                fecha_inicio_grafico = (hoy - timedelta(days=30)).date()
+                fecha_fin_grafico = hoy.date()
+            else:
+                with col2:
+                    fecha_inicio_grafico = st.date_input(
+                        "Desde:",
+                        value=(hoy - timedelta(days=30)).date(),
+                        max_value=hoy.date(),
+                        key="fecha_inicio_grafico"
+                    )
+                with col3:
+                    fecha_fin_grafico = st.date_input(
+                        "Hasta:",
+                        value=hoy.date(),
+                        max_value=hoy.date(),
+                        key="fecha_fin_grafico"
+                    )
+        
+        # Opciones de comparación
         col_modo1, col_modo2 = st.columns(2)
         with col_modo1:
             modo_comparacion = st.checkbox("🔄 Comparar todas las fincas", value=False, help="Muestra las líneas de VPD de todas las fincas en un solo gráfico")
         
         if modo_comparacion:
-            graficar_evolucion_vpd(finca_seleccionada, comparar_fincas=True)
+            graficar_evolucion_vpd(finca_seleccionada, comparar_fincas=True, fecha_inicio=str(fecha_inicio_grafico), fecha_fin=str(fecha_fin_grafico))
         else:
             with col_modo2:
                 finca_para_grafico = st.selectbox(
@@ -1436,18 +1537,67 @@ del aire a una temperatura dada.
                     key="selector_finca_grafico",
                     index=list(fincas_disponibles.keys()).index(finca_seleccionada)
                 )
-            graficar_evolucion_vpd(finca_para_grafico, comparar_fincas=False)
+            graficar_evolucion_vpd(finca_para_grafico, comparar_fincas=False, fecha_inicio=str(fecha_inicio_grafico), fecha_fin=str(fecha_fin_grafico))
 
     # ===== TAB 3: TABLA DE DATOS =====
     with tab3:
         st.header("📋 Tabla de Datos Históricos")
+        
+        # Filtros de fecha para la tabla
+        with st.expander("🔍 Filtros de Búsqueda", expanded=True):
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                rango_tabla = st.selectbox(
+                    "Rango rápido:",
+                    options=["Últimas 24 horas", "Últimos 7 días", "Últimos 30 días", "Últimos 90 días", "Todo el historial", "Personalizado"],
+                    index=2,
+                    key="rango_tabla"
+                )
+            
+            # Calcular fechas según selección
+            hoy = datetime.now(timezone(timedelta(hours=-5)))
+            if rango_tabla == "Últimas 24 horas":
+                fecha_inicio_tabla = (hoy - timedelta(days=1)).date()
+                fecha_fin_tabla = hoy.date()
+            elif rango_tabla == "Últimos 7 días":
+                fecha_inicio_tabla = (hoy - timedelta(days=7)).date()
+                fecha_fin_tabla = hoy.date()
+            elif rango_tabla == "Últimos 30 días":
+                fecha_inicio_tabla = (hoy - timedelta(days=30)).date()
+                fecha_fin_tabla = hoy.date()
+            elif rango_tabla == "Últimos 90 días":
+                fecha_inicio_tabla = (hoy - timedelta(days=90)).date()
+                fecha_fin_tabla = hoy.date()
+            elif rango_tabla == "Todo el historial":
+                fecha_inicio_tabla = None
+                fecha_fin_tabla = None
+            else:
+                with col2:
+                    fecha_inicio_tabla = st.date_input(
+                        "Desde:",
+                        value=(hoy - timedelta(days=30)).date(),
+                        max_value=hoy.date(),
+                        key="fecha_inicio_tabla"
+                    )
+                with col3:
+                    fecha_fin_tabla = st.date_input(
+                        "Hasta:",
+                        value=hoy.date(),
+                        max_value=hoy.date(),
+                        key="fecha_fin_tabla"
+                    )
+        
         try:
-            historico = cargar_historico(finca_seleccionada)
+            # Cargar datos con filtros de fecha
+            if fecha_inicio_tabla and fecha_fin_tabla:
+                historico = cargar_historico(finca_seleccionada, fecha_inicio=str(fecha_inicio_tabla), fecha_fin=str(fecha_fin_tabla))
+            else:
+                historico = cargar_historico(finca_seleccionada)
             
             if not historico or len(historico) == 0:
-                st.warning("⚠️ No hay datos históricos disponibles. La app guardará datos automáticamente cada 15 minutos.")
+                st.warning("⚠️ No hay datos históricos disponibles para el rango seleccionado.")
             else:
-                
                 # Convertir a DataFrame
                 df_historico = pd.DataFrame(historico)
             
@@ -1463,10 +1613,23 @@ del aire a una temperatura dada.
                 }
                 df_historico['dia_semana'] = df_historico['dia_semana'].map(dias_es)
                 
-                # Seleccionar y ordenar columnas (incluir finca)
+                # Seleccionar y ordenar columnas
                 df_mostrar = df_historico[['finca', 'dia_semana', 'fecha', 'hora', 'temperatura', 'humedad', 'vpd']].copy()
                 df_mostrar.columns = ['Finca', 'Día', 'Fecha', 'Hora', 'Temp (°C)', 'HR (%)', 'VPD (kPa)']
                 df_mostrar = df_mostrar.sort_values('Fecha', ascending=False)
+                
+                # Mostrar estadísticas resumen
+                col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                with col_stat1:
+                    st.metric("📊 Total Registros", f"{len(df_mostrar):,}")
+                with col_stat2:
+                    st.metric("🌡️ Temp Promedio", f"{df_mostrar['Temp (°C)'].mean():.1f}°C")
+                with col_stat3:
+                    st.metric("💧 HR Promedio", f"{df_mostrar['HR (%)'].mean():.1f}%")
+                with col_stat4:
+                    st.metric("📈 VPD Promedio", f"{df_mostrar['VPD (kPa)'].mean():.2f} kPa")
+                
+                st.write("---")
                 
                 # Mostrar tabla con formato
                 st.dataframe(
@@ -1476,15 +1639,17 @@ del aire a una temperatura dada.
                 )
                 
                 # Botones de descarga
-                col_btn1, col_btn2 = st.columns(2)
+                st.write("### 📥 Exportar Datos")
+                col_btn1, col_btn2, col_btn3 = st.columns(3)
                 
                 with col_btn1:
                     # Botón para descargar CSV
                     csv = df_mostrar.to_csv(index=False, encoding='utf-8-sig')
+                    nombre_archivo = f"vpd_{finca_seleccionada.lower()}_{fecha_inicio_tabla if fecha_inicio_tabla else 'completo'}_{fecha_fin_tabla if fecha_fin_tabla else datetime.now().strftime('%Y%m%d')}"
                     st.download_button(
                         label="📥 Descargar CSV",
                         data=csv,
-                        file_name=f"vpd_historico_{finca_seleccionada.lower()}_{datetime.now().strftime('%Y%m%d')}.csv",
+                        file_name=f"{nombre_archivo}.csv",
                         mime="text/csv",
                         use_container_width=True
                     )
@@ -1495,15 +1660,38 @@ del aire a una temperatura dada.
                     buffer = BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         df_mostrar.to_excel(writer, index=False, sheet_name='VPD Histórico')
+                        # Agregar hoja con estadísticas
+                        stats_df = pd.DataFrame({
+                            'Métrica': ['Total Registros', 'Temperatura Promedio', 'Temp Mínima', 'Temp Máxima',
+                                       'Humedad Promedio', 'HR Mínima', 'HR Máxima',
+                                       'VPD Promedio', 'VPD Mínimo', 'VPD Máximo'],
+                            'Valor': [
+                                len(df_mostrar),
+                                f"{df_mostrar['Temp (°C)'].mean():.2f}°C",
+                                f"{df_mostrar['Temp (°C)'].min():.2f}°C",
+                                f"{df_mostrar['Temp (°C)'].max():.2f}°C",
+                                f"{df_mostrar['HR (%)'].mean():.2f}%",
+                                f"{df_mostrar['HR (%)'].min():.2f}%",
+                                f"{df_mostrar['HR (%)'].max():.2f}%",
+                                f"{df_mostrar['VPD (kPa)'].mean():.3f} kPa",
+                                f"{df_mostrar['VPD (kPa)'].min():.3f} kPa",
+                                f"{df_mostrar['VPD (kPa)'].max():.3f} kPa"
+                            ]
+                        })
+                        stats_df.to_excel(writer, index=False, sheet_name='Estadísticas')
                     buffer.seek(0)
                     
                     st.download_button(
                         label="📊 Descargar Excel",
                         data=buffer,
-                        file_name=f"vpd_historico_{finca_seleccionada.lower()}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        file_name=f"{nombre_archivo}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
+                
+                with col_btn3:
+                    # Información de ayuda
+                    st.info(f"💡 Exportando {len(df_mostrar):,} registros")
                     
         except Exception as e:
             st.error(f"❌ Error al mostrar tabla: {str(e)}")
